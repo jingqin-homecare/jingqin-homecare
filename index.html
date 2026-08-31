@@ -356,7 +356,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 const { useState, useEffect } = React;
 // ★ 後端網址（Apps Script Web App）
-const API = "{{API_URL}}";  // ★請填入部署後端.gs後取得的網址(.../exec結尾)
+const API = "https://script.google.com/macros/s/AKfycbxrgEcJPeJw-58YPZuKtDpc8BOGrAlAlhJk3nQcXuXhlxR8VH_iUZY_pjIE7hJCba_LNA/exec";  // ★請填入部署後端.gs後取得的網址(.../exec結尾)
 
 async function callAPI(action, params = {}) {
   const qs = new URLSearchParams({ action, ...params }).toString();
