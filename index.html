@@ -358,10 +358,37 @@ const { useState, useEffect } = React;
 // ★ 後端網址（Apps Script Web App）
 const API = "https://script.google.com/macros/s/AKfycbxrgEcJPeJw-58YPZuKtDpc8BOGrAlAlhJk3nQcXuXhlxR8VH_iUZY_pjIE7hJCba_LNA/exec";  // ★請填入部署後端.gs後取得的網址(.../exec結尾)
 
+// ★v85(2026/09/14) 自動重試：Apps Script 同時執行上限(30/帳號)造成的偶發失敗，
+//   會自動等待後重試，使用者不會看到「登入失敗」。
+//   ⚠️ 只對「唯讀」動作重試；寫入類(changePw)維持原本行為，避免重複寫入。
+//   submit 不走這裡（它有自己的離線佇列），完全不受影響。
+const RETRY_SAFE_ACTIONS = ['login','getDay','getPhrases','adminGetMissing'];
 async function callAPI(action, params = {}) {
   const qs = new URLSearchParams({ action, ...params }).toString();
-  const res = await fetch(`${API}?${qs}`);
-  return await res.json();
+  const url = `${API}?${qs}`;
+  // 寫入類動作：維持原本單次呼叫，不加逾時也不重試
+  if (RETRY_SAFE_ACTIONS.indexOf(action) === -1) {
+    const res = await fetch(url);
+    return await res.json();
+  }
+  const MAX_TRY = 3, TIMEOUT_MS = 15000;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_TRY; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+      let res;
+      try { res = await fetch(url, { signal: ctrl.signal }); }
+      finally { clearTimeout(timer); }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      lastErr = e;
+      if (attempt >= MAX_TRY) break;
+      await new Promise(r => setTimeout(r, attempt * 1200)); // 1.2s → 2.4s
+    }
+  }
+  throw lastErr;
 }
 
 
@@ -1037,7 +1064,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",NOW_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 2026/09/11")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",NOW_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 2026/09/14")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
