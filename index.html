@@ -650,7 +650,8 @@ function App() {
   const [phrasesQty,setPhrasesQty] = useState({});   // ★個案_BA碼_支數
   const [phrasesSlot,setPhrasesSlot] = useState({}); // ★個案_BA碼_支數_時段區間
   const [byCode,setByCode] = useState({});
-  const [myCode,setMyCode] = useState({});       // ★我的：範本＋填過的歷史（紅框1）
+  const [myCode,setMyCode] = useState({});       // ★我的：範本＋填過的歷史（相容保留，紅框1已不用）
+  const [myTemplates,setMyTemplates] = useState({}); // ★v87 紅框1：只放我主動存的範本
   const [otherCode,setOtherCode] = useState({}); // ★別人的範本（紅框2「其他範例」）
   const [lastSkin,setLastSkin] = useState({});
   const [loadingDay,setLoadingDay] = useState(false);
@@ -785,6 +786,7 @@ function App() {
         setPhrasesSlot(cachedPhr.phrasesSlot||{});
         setByCode(cachedPhr.byCode||{});
         setMyCode(cachedPhr.myCode||{});
+        setMyTemplates(cachedPhr.myTemplates||{});
         setOtherCode(cachedPhr.otherCode||{});
         setLastSkin(cachedPhr.lastSkin||{});
       }
@@ -805,11 +807,12 @@ function App() {
       setPhrasesSlot(phR.ok?phR.phrasesSlot||{}:{});
       setByCode(phR.ok?phR.byCode||{}:{});
       setMyCode(phR.ok?phR.myCode||{}:{});
+      setMyTemplates(phR.ok?phR.myTemplates||{}:{});
       setOtherCode(phR.ok?phR.otherCode||{}:{});
       setLastSkin(phR.ok?phR.lastSkin||{}:{});
       // 存入快取
       if(dayR.ok) cacheSchedule(empId,m,d,{day:days});
-      if(phR.ok)  cachePhrases(empId,{phrases:phR.phrases||{},phrasesQty:phR.phrasesQty||{},phrasesSlot:phR.phrasesSlot||{},byCode:phR.byCode||{},myCode:phR.myCode||{},otherCode:phR.otherCode||{},lastSkin:phR.lastSkin||{}});
+      if(phR.ok)  cachePhrases(empId,{phrases:phR.phrases||{},phrasesQty:phR.phrasesQty||{},phrasesSlot:phR.phrasesSlot||{},byCode:phR.byCode||{},myCode:phR.myCode||{},myTemplates:phR.myTemplates||{},otherCode:phR.otherCode||{},lastSkin:phR.lastSkin||{}});
     }catch(e){
       if(!cachedSched){ setDayList([]); setLoadError(true); }
       // 有快取就繼續用，不清空
@@ -1057,7 +1060,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",NOW_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 2026/09/23")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",NOW_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 2026/09/24")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
@@ -1207,7 +1210,7 @@ function App() {
         (skin==="new"||skin==="prev")&&React.createElement("textarea",{value:skinNote,onChange:e=>setSkinNote(e.target.value),placeholder:"請說明異常狀況（位置、類型、尺寸）",rows:2,style:{marginTop:8,width:"100%",border:`1px solid ${C.warn}`,borderRadius:7,padding:"8px 10px",fontSize:19,fontFamily:"inherit",resize:"none",boxSizing:"border-box"}})),
       React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:10}},
         React.createElement(PillTitle,{icon:"📝"},"服務概況"),
-        codesInSession.map((c,i)=>React.createElement(CodeBlock,{key:c.code+i,codeItem:c,extra:c.extra,fromLast:fromLastMap[c.code],chips:(()=>{const k=`${session.client}_${c.code}`;const qk=`${k}_${c.qty||1}`;const sameSlot=phrasesSlot[`${qk}_${slotOf(session.time)}`]||[];const sameQty=phrasesQty[qk]||[];const exact=phrases[k]||[];const mineAll=myCode[c.code]||[];const others=otherCode[c.code]||[];const seen=new Set();const out=[];[sameSlot,sameQty,exact,mineAll].forEach(list=>list.forEach(p=>{if(!seen.has(p.text)){seen.add(p.text);out.push({t:p.text,freq:p.count,personal:true});}}));others.forEach(p=>{if(!seen.has(p.text)){seen.add(p.text);out.push({t:p.text,freq:p.count,personal:false});}});return out;})(),value:codeValues[c.code]||"",saved:savedTemplates[c.code],pending:savingTemplates[c.code],onChange:v=>{setCodeValues(p=>({...p,[c.code]:v}));setSavedTemplates(p=>({...p,[c.code]:false}));},onAddChip:phrase=>{setCodeValues(p=>{const cur=(p[c.code]||"").trim();if(!cur)return{...p,[c.code]:phrase};if(cur.split("、").includes(phrase))return p;return{...p,[c.code]:cur+"、"+phrase};});setSavedTemplates(p=>({...p,[c.code]:false}));},onSaveTemplate:async()=>{const val=(codeValues[c.code]||"").trim();if(!val){alert("請先輸入服務內容再加入資料庫");return;}setSavingTemplates(p=>({...p,[c.code]:true}));try{const r=await fetch(API,{method:"POST",keepalive:true,body:JSON.stringify({action:"savePhrase",empId:me.empId,empName:me.name,client:session.client,code:c.code,phrase:val})}).then(x=>x.json());if(r&&r.ok){setSavedTemplates(p=>({...p,[c.code]:true}));setByCode(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});setMyCode(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});}else{alert("加入資料庫失敗："+((r&&r.msg)||"未知錯誤，請再試一次"));}}catch(e){alert("加入資料庫失敗，請檢查網路連線後再試一次");}finally{setSavingTemplates(p=>({...p,[c.code]:false}));}},onRemove:()=>removeExtra(c.code)})),
+        codesInSession.map((c,i)=>React.createElement(CodeBlock,{key:c.code+i,codeItem:c,extra:c.extra,fromLast:fromLastMap[c.code],chips:(()=>{const mineT=myTemplates[c.code]||[];const others=otherCode[c.code]||[];const seen=new Set();const out=[];mineT.forEach(p=>{if(!seen.has(p.text)){seen.add(p.text);out.push({t:p.text,freq:p.count,personal:true});}});others.forEach(p=>{if(!seen.has(p.text)){seen.add(p.text);out.push({t:p.text,freq:p.count,personal:false});}});return out;})(),value:codeValues[c.code]||"",saved:savedTemplates[c.code],pending:savingTemplates[c.code],onChange:v=>{setCodeValues(p=>({...p,[c.code]:v}));setSavedTemplates(p=>({...p,[c.code]:false}));},onAddChip:phrase=>{setCodeValues(p=>{const cur=(p[c.code]||"").trim();if(!cur)return{...p,[c.code]:phrase};if(cur.split("、").includes(phrase))return p;return{...p,[c.code]:cur+"、"+phrase};});setSavedTemplates(p=>({...p,[c.code]:false}));},onSaveTemplate:async()=>{const val=(codeValues[c.code]||"").trim();if(!val){alert("請先輸入服務內容再加入資料庫");return;}setSavingTemplates(p=>({...p,[c.code]:true}));try{const r=await fetch(API,{method:"POST",keepalive:true,body:JSON.stringify({action:"savePhrase",empId:me.empId,empName:me.name,client:session.client,code:c.code,phrase:val})}).then(x=>x.json());if(r&&r.ok){setSavedTemplates(p=>({...p,[c.code]:true}));setByCode(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});setMyCode(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});setMyTemplates(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});}else{alert("加入資料庫失敗："+((r&&r.msg)||"未知錯誤，請再試一次"));}}catch(e){alert("加入資料庫失敗，請檢查網路連線後再試一次");}finally{setSavingTemplates(p=>({...p,[c.code]:false}));}},onRemove:()=>removeExtra(c.code)})),
         !allFilled&&React.createElement("div",{style:{background:C.warnLight,border:`1px solid #FCD34D`,borderRadius:8,padding:"10px 14px",fontSize:18,color:C.warn}},"⚠️ 尚有 ",codesInSession.filter(c=>!codeValues[c.code]?.trim()).length," 個項目未填寫")),
     React.createElement("div",{style:{position:"fixed",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"12px 14px"}},
       submitErr&&React.createElement("div",{style:{background:"#FEE2E2",border:"1px solid #EF4444",borderRadius:8,padding:"10px 14px",fontSize:17,color:"#B91C1C",marginBottom:10,fontWeight:600}},"⚠️ ",submitErr,React.createElement("div",{style:{fontSize:14,fontWeight:400,marginTop:4,color:"#7F1D1D"}},"這筆尚未送出，請確認狀況後再按一次送出")),
