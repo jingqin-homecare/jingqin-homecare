@@ -770,6 +770,7 @@ function LogsTab({me, viewSup}){
       codes:  splitLogToCodes(log),
       skin:   log.skin||"ok",
       skinNote:log.skinNote||"",
+      tube:   log.tube||"",
       note:   log.note||"",
       status: log.status||"已送出"
     });
@@ -883,7 +884,8 @@ function LogsTab({me, viewSup}){
           e("div",{style:{marginBottom:12}},e(PillTitle,{icon:"🩺"},"身體或皮膚狀況")),
           e(SkinStatus,{value:editData.skin,onChange:v=>setEditData({...editData,skin:v})}),
           (editData.skin==="new"||editData.skin==="prev") && e("textarea",{value:editData.skinNote,onChange:ev=>setEditData({...editData,skinNote:ev.target.value}),placeholder:"請說明異常狀況（位置、類型、尺寸）",rows:2,
-            style:{marginTop:8,width:"100%",border:`1px solid ${C.warn}`,borderRadius:7,padding:"8px 10px",fontSize:19,fontFamily:"inherit",resize:"none",boxSizing:"border-box"}})),
+            style:{marginTop:8,width:"100%",border:`1px solid ${C.warn}`,borderRadius:7,padding:"8px 10px",fontSize:19,fontFamily:"inherit",resize:"none",boxSizing:"border-box"}}),
+          e("div",{style:{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.divider}`,fontSize:17,color:C.text}},"🩺 管路留置：",e("b",null,editData.tube||"（未填）"))),
 
         e("div",{style:{display:"flex",flexDirection:"column",gap:10}},
           e(PillTitle,{icon:"📝"},"服務概況（BA碼）"),
@@ -996,7 +998,8 @@ function LogsTab({me, viewSup}){
               e(AdminTag,{text:log.status,color:log.status==="已送出"?"ok":(abn?"warn":"danger")})),
             codes.length>0 && e("div",{style:{padding:"8px 14px 10px",borderTop:`1px solid ${C.divider}`,background:"#FAF6EC",display:"flex",flexWrap:"wrap",gap:6}},
               codes.map((c,i)=>e(Tag,{key:i,code:c.code,name:codeNameOf(c.code),qty:c.qty}))),
-            log.skinNote && e("div",{style:{padding:"0 14px 10px",fontSize:16,color:C.warn}},"⚠️ "+log.skinNote));
+            log.skinNote && e("div",{style:{padding:"0 14px 10px",fontSize:16,color:C.warn}},"⚠️ "+log.skinNote),
+            log.tube && e("div",{style:{padding:"0 14px 10px",fontSize:16,color:C.text}},"🩺 管路留置："+log.tube));
         }));
     })());
 }
@@ -1698,7 +1701,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.7（2026/09/14）")),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.8（2026/10/01）")),
       // 維護模式狀態列（僅管理員看得到、可操作，點一下即可切換，不用改任何程式碼、不用重新部署）
       me.role==="管理員" && e("div",{
         onClick: maintBusy ? undefined : toggleMaintenance,
