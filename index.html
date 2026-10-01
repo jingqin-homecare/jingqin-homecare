@@ -538,6 +538,49 @@ const SkinStatus = ({value,onChange}) => {
   return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6}},opts.map(o=>React.createElement("label",{key:o.v,onClick:()=>onChange(o.v),style:{display:"flex",alignItems:"center",gap:10,background:value===o.v?C.okLight:C.divider,border:`1.5px solid ${value===o.v?C.ok:"transparent"}`,borderRadius:8,padding:"10px 12px",cursor:"pointer"}},React.createElement("div",{style:{width:18,height:18,borderRadius:"50%",border:`2px solid ${value===o.v?C.ok:C.border}`,background:value===o.v?C.ok:"white",flexShrink:0}}),React.createElement("span",{style:{fontSize:19,color:C.text}},o.label))));
 };
 
+// ── 管路留置狀況（v89）：第一層單選 無/如前次/有；選「有」展開第二層複選 ──
+const TUBE_ITEMS=["鼻胃管","尿管","氣切"];
+const TubeStatus = ({value,onChange,items,onToggleItem,otherOn,onToggleOther,otherText,onOtherText,lastText}) => {
+  const opts=[{v:"none",label:"無管路"},{v:"prev",label:"管路狀況如前次"+(lastText?("（上次："+lastText+"）"):"")},{v:"has",label:"有管路"}];
+  const Radio=o=>React.createElement("label",{key:o.v,onClick:()=>onChange(o.v),style:{display:"flex",alignItems:"center",gap:10,background:value===o.v?C.okLight:C.divider,border:`1.5px solid ${value===o.v?C.ok:"transparent"}`,borderRadius:8,padding:"10px 12px",cursor:"pointer"}},React.createElement("div",{style:{width:18,height:18,borderRadius:"50%",border:`2px solid ${value===o.v?C.ok:C.border}`,background:value===o.v?C.ok:"white",flexShrink:0}}),React.createElement("span",{style:{fontSize:19,color:C.text}},o.label));
+  const Check=(label,on,fn)=>React.createElement("label",{key:label,onClick:fn,style:{display:"inline-flex",alignItems:"center",gap:8,background:on?C.okLight:C.divider,border:`1.5px solid ${on?C.ok:"transparent"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer"}},React.createElement("div",{style:{width:18,height:18,borderRadius:4,border:`2px solid ${on?C.ok:C.border}`,background:on?C.ok:"white",flexShrink:0,color:"white",fontSize:14,lineHeight:"15px",textAlign:"center"}},on?"✓":""),React.createElement("span",{style:{fontSize:19,color:C.text}},label));
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+    opts.map(Radio),
+    value==="has"&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginTop:4,marginLeft:4,paddingLeft:10,borderLeft:`3px solid ${C.ok}`}},
+      React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
+        TUBE_ITEMS.map(it=>Check(it,items.indexOf(it)>=0,()=>onToggleItem(it))),
+        Check("其他",otherOn,onToggleOther)),
+      otherOn&&React.createElement("input",{value:otherText,onChange:e=>onOtherText(e.target.value),placeholder:"請填寫其他管路（例：胃造口、尿套）",style:{width:"100%",border:`1px solid ${C.warn}`,borderRadius:7,padding:"8px 10px",fontSize:19,fontFamily:"inherit",boxSizing:"border-box"}})));
+};
+// 把管路狀態組成要存進試算表的字串
+function buildTubeStr(tube,items,otherOn,otherText){
+  if(tube==="none")return "無";
+  if(tube==="prev")return "如前次";
+  if(tube==="has"){
+    const parts=items.slice();
+    if(otherOn){ const t=(otherText||"").trim(); parts.push(t?("其他（"+t+"）"):"其他"); }
+    return "有："+parts.join("、");
+  }
+  return "";
+}
+// 把試算表字串還原成狀態（重開已送出紀錄時用）
+function parseTubeStr(s){
+  s=String(s||"").trim();
+  if(!s)return {tube:"",items:[],otherOn:false,otherText:""};
+  if(s==="無")return {tube:"none",items:[],otherOn:false,otherText:""};
+  if(s==="如前次")return {tube:"prev",items:[],otherOn:false,otherText:""};
+  if(s.indexOf("有")===0){
+    const body=s.replace(/^有[:：]?/,"");
+    const items=[];let otherOn=false,otherText="";
+    body.split(/[、,，]/).forEach(p=>{p=p.trim();if(!p)return;
+      if(TUBE_ITEMS.indexOf(p)>=0){items.push(p);}
+      else if(p.indexOf("其他")===0){otherOn=true;const m=p.match(/[（(]([^）)]*)[）)]/);if(m)otherText=m[1];}
+    });
+    return {tube:"has",items,otherOn,otherText};
+  }
+  return {tube:"",items:[],otherOn:false,otherText:""};
+}
+
 const CodeBlock = ({codeItem,value,onChange,onAddChip,extra,onRemove,fromLast,chips,onSaveTemplate,saved,pending,onDeleteChip}) => {
   const [showChips,setShowChips] = useState(false);
   const [showMore,setShowMore] = useState(false);
@@ -665,6 +708,11 @@ function App() {
   const [activeIdx,setActiveIdx] = useState(null);
   const [skin,setSkin] = useState("ok");
   const [skinNote,setSkinNote] = useState("");
+  const [lastTube,setLastTube] = useState({});          // ★個案最近一次管路（帶上次用）
+  const [tube,setTube] = useState("");                   // "" / none / prev / has
+  const [tubeItems,setTubeItems] = useState([]);         // 鼻胃管/尿管/氣切
+  const [tubeOtherOn,setTubeOtherOn] = useState(false);
+  const [tubeOther,setTubeOther] = useState("");
   const [codeValues,setCodeValues] = useState({});
   const [fromLastMap,setFromLastMap] = useState({});
   const [extraCodes,setExtraCodes] = useState([]);
@@ -794,6 +842,7 @@ function App() {
         setMyTemplates(cachedPhr.myTemplates||{});
         setOtherCode(cachedPhr.otherCode||{});
         setLastSkin(cachedPhr.lastSkin||{});
+        setLastTube(cachedPhr.lastTube||{});
       }
       setLoadingDay(false); // 快取已顯示，取消 loading
     } else {
@@ -815,9 +864,10 @@ function App() {
       setMyTemplates(phR.ok?phR.myTemplates||{}:{});
       setOtherCode(phR.ok?phR.otherCode||{}:{});
       setLastSkin(phR.ok?phR.lastSkin||{}:{});
+      setLastTube(phR.ok?phR.lastTube||{}:{});
       // 存入快取
       if(dayR.ok) cacheSchedule(empId,m,d,{day:days});
-      if(phR.ok)  cachePhrases(empId,{phrases:phR.phrases||{},phrasesQty:phR.phrasesQty||{},phrasesSlot:phR.phrasesSlot||{},byCode:phR.byCode||{},myCode:phR.myCode||{},myTemplates:phR.myTemplates||{},otherCode:phR.otherCode||{},lastSkin:phR.lastSkin||{}});
+      if(phR.ok)  cachePhrases(empId,{phrases:phR.phrases||{},phrasesQty:phR.phrasesQty||{},phrasesSlot:phR.phrasesSlot||{},byCode:phR.byCode||{},myCode:phR.myCode||{},myTemplates:phR.myTemplates||{},otherCode:phR.otherCode||{},lastSkin:phR.lastSkin||{},lastTube:phR.lastTube||{}});
     }catch(e){
       if(!cachedSched){ setDayList([]); setLoadError(true); }
       // 有快取就繼續用，不清空
@@ -932,11 +982,12 @@ function App() {
 
   const handleOpen=idx=>{
     const s=dayList[idx]; setActiveIdx(idx);
-    if(savedData[idx]){setSkin(savedData[idx].skin);setSkinNote(savedData[idx].skinNote||"");setCodeValues(savedData[idx].codeValues);setExtraCodes(savedData[idx].extraCodes||[]);setFromLastMap({});}
+    if(savedData[idx]){setSkin(savedData[idx].skin);setSkinNote(savedData[idx].skinNote||"");setCodeValues(savedData[idx].codeValues);setExtraCodes(savedData[idx].extraCodes||[]);setFromLastMap({});setTube(savedData[idx].tube||"");setTubeItems(savedData[idx].tubeItems||[]);setTubeOtherOn(!!savedData[idx].tubeOtherOn);setTubeOther(savedData[idx].tubeOther||"");}
     else if(s.saved&&s.saved.codeValues&&Object.keys(s.saved.codeValues).length>0){
       // ★已送出：顯示當初真正填寫的內容，不走「帶入上次」
       const sv=s.saved;
       setSkin(sv.skin||"ok"); setSkinNote(sv.skinNote||"");
+      {const pt=parseTubeStr(sv.tube);setTube(pt.tube);setTubeItems(pt.items);setTubeOtherOn(pt.otherOn);setTubeOther(pt.otherText);}
       const init={},fl={},ext=[];
       s.codes.forEach(c=>{
         if(sv.codeValues[c.code]!==undefined&&sv.codeValues[c.code]!==""){
@@ -957,6 +1008,10 @@ function App() {
       const ls=lastSkin[s.client];
       if(ls&&ls.skinNote){setSkin("prev");setSkinNote(ls.skinNote);}
       else{setSkin("ok");setSkinNote("");}
+      // ★v89 管路：個案上次有填管路 → 預設「管路狀況如前次」；否則留空強制選（必填）
+      {const lt=String(lastTube[s.client]||"").trim();
+       if(lt&&lt!=="無"&&lt!=="如前次"){setTube("prev");}else if(lt==="無"){setTube("none");}else{setTube("");}
+       setTubeItems([]);setTubeOtherOn(false);setTubeOther("");}
       // ★v86：不再自動帶入上次服務內容；輸入框一律留空，照服員自行點選資料庫或打字
       setCodeValues({}); setFromLastMap({}); setExtraCodes([]);
     }
@@ -975,13 +1030,17 @@ function App() {
   const fillDateStr=`${_now.getFullYear()-1911}年${pickMonth}月${pickDay}日（${_pickWd}）`;
   const codesInSession=session?[...session.codes.map(c=>({...c,extra:false})),...extraCodes.map(c=>({...c,extra:true}))]:[];
   const allFilled=codesInSession.length>0&&codesInSession.every(c=>codeValues[c.code]?.trim());
+  // ★v89 管路留置必填：須選一項；選「有管路」須至少勾一項，且勾了「其他」要填說明
+  const tubeOK=(tube==="none"||tube==="prev")||(tube==="has"&&(tubeItems.length>0||tubeOtherOn)&&!(tubeOtherOn&&!tubeOther.trim()));
 
   const handleSubmit=async()=>{
-    if(!allFilled||!canSubmitNow()||busy)return;
+    if(!allFilled||busy)return;
+    if(!tubeOK){setSubmitErr(tube===""?"請先選擇「管路留置狀況」":(tube==="has"&&tubeItems.length===0&&!tubeOtherOn?"選「有管路」請至少勾一項（或勾其他並填寫）":"勾了「其他」請填寫管路說明"));return;}
+    if(!canSubmitNow())return;
     setBusy(true);
     setSubmitErr(""); // 清掉上次的錯誤提示
     const records=codesInSession.map(c=>({code:c.code,summary:codeValues[c.code]||"",extra:!!c.extra,qty:c.qty||1}));
-    const payload={empId:me.empId,empName:me.name,serviceDate:`${_now.getFullYear()-1911}/${pickMonth}/${pickDay}`,client:session.client,time:session.time,bantype:session.bantype,skin,skinNote:(skin==="new"||skin==="prev")?skinNote:"",records,signature,abnormal:false};
+    const payload={empId:me.empId,empName:me.name,serviceDate:`${_now.getFullYear()-1911}/${pickMonth}/${pickDay}`,client:session.client,time:session.time,bantype:session.bantype,skin,skinNote:(skin==="new"||skin==="prev")?skinNote:"",tube:buildTubeStr(tube,tubeItems,tubeOtherOn,tubeOther),records,signature,abnormal:false};
     // ★先真正呼叫後端，等結果回來，不要在還沒送出前就顯示「已送出」──
     //   避免維護模式擋下、伺服器錯誤等情況被誤判成功，照服員卻不知道資料沒進去。
     let submitRes=null, networkFailed=false;
@@ -999,7 +1058,7 @@ function App() {
     }
     if(submitRes&&submitRes.ok){
       // 後端確認成功，才顯示已送出、切回列表
-      setSavedData(p=>({...p,[activeIdx]:{codeValues:{...codeValues},skin,skinNote,extraCodes:[...extraCodes]}}));
+      setSavedData(p=>({...p,[activeIdx]:{codeValues:{...codeValues},skin,skinNote,tube,tubeItems:[...tubeItems],tubeOtherOn,tubeOther,extraCodes:[...extraCodes]}}));
       setSubmitted(prev=>prev.includes(activeIdx)?prev:[...prev,activeIdx]);
       setScreen("list");
       setBusy(false);
@@ -1012,7 +1071,7 @@ function App() {
       // 真正離線 → 存入佇列，之後有網路自動補傳，維持原本的離線能力
       const qId = enqueueSubmit(payload);
       setQueueVersion(v=>v+1);
-      setSavedData(p=>({...p,[activeIdx]:{codeValues:{...codeValues},skin,skinNote,extraCodes:[...extraCodes]}}));
+      setSavedData(p=>({...p,[activeIdx]:{codeValues:{...codeValues},skin,skinNote,tube,tubeItems:[...tubeItems],tubeOtherOn,tubeOther,extraCodes:[...extraCodes]}}));
       setSubmitted(prev=>prev.includes(activeIdx)?prev:[...prev,activeIdx]);
       setScreen("list");
       setBusy(false);
@@ -1213,13 +1272,17 @@ function App() {
         React.createElement("div",{style:{marginBottom:12}},React.createElement(PillTitle,{icon:"🩺"},"身體或皮膚狀況")),
         React.createElement(SkinStatus,{value:skin,onChange:setSkin}),
         (skin==="new"||skin==="prev")&&React.createElement("textarea",{value:skinNote,onChange:e=>setSkinNote(e.target.value),placeholder:"請說明異常狀況（位置、類型、尺寸）",rows:2,style:{marginTop:8,width:"100%",border:`1px solid ${C.warn}`,borderRadius:7,padding:"8px 10px",fontSize:19,fontFamily:"inherit",resize:"none",boxSizing:"border-box"}})),
+      React.createElement("div",{style:{background:C.card,borderRadius:12,padding:"14px",border:`1px solid ${tubeOK?C.border:C.warn}`}},
+        React.createElement("div",{style:{marginBottom:12,display:"flex",alignItems:"center",gap:8}},React.createElement(PillTitle,{icon:"🩺"},"管路留置狀況"),React.createElement("span",{style:{color:C.danger,fontSize:15,fontWeight:700}},"＊必填")),
+        React.createElement(TubeStatus,{value:tube,onChange:setTube,items:tubeItems,onToggleItem:(it)=>setTubeItems(p=>p.indexOf(it)>=0?p.filter(x=>x!==it):[...p,it]),otherOn:tubeOtherOn,onToggleOther:()=>setTubeOtherOn(v=>!v),otherText:tubeOther,onOtherText:setTubeOther,lastText:(()=>{const lt=String(lastTube[session.client]||"").trim();return (lt&&lt!=="如前次")?lt:"";})()}),
+        !tubeOK&&React.createElement("div",{style:{marginTop:8,fontSize:16,color:C.warn}},"⚠️ 請完成管路留置狀況後才能送出")),
       React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:10}},
         React.createElement(PillTitle,{icon:"📝"},"服務概況"),
         codesInSession.map((c,i)=>React.createElement(CodeBlock,{key:c.code+i,codeItem:c,extra:c.extra,fromLast:fromLastMap[c.code],chips:(()=>{const mineT=myTemplates[c.code]||[];const others=otherCode[c.code]||[];const seen=new Set();const out=[];mineT.forEach(p=>{if(!seen.has(p.text)){seen.add(p.text);out.push({t:p.text,freq:p.count,personal:true});}});others.forEach(p=>{if(!seen.has(p.text)){seen.add(p.text);out.push({t:p.text,freq:p.count,personal:false});}});return out;})(),value:codeValues[c.code]||"",saved:savedTemplates[c.code],pending:savingTemplates[c.code],onChange:v=>{setCodeValues(p=>({...p,[c.code]:v}));setSavedTemplates(p=>({...p,[c.code]:false}));},onAddChip:phrase=>{setCodeValues(p=>{const cur=(p[c.code]||"").trim();if(!cur)return{...p,[c.code]:phrase};if(cur.split("、").includes(phrase))return p;return{...p,[c.code]:cur+"、"+phrase};});setSavedTemplates(p=>({...p,[c.code]:false}));},onSaveTemplate:async()=>{const val=(codeValues[c.code]||"").trim();if(!val){alert("請先輸入服務內容再加入資料庫");return;}setSavingTemplates(p=>({...p,[c.code]:true}));try{const r=await fetch(API,{method:"POST",keepalive:true,body:JSON.stringify({action:"savePhrase",empId:me.empId,empName:me.name,client:session.client,code:c.code,phrase:val})}).then(x=>x.json());if(r&&r.ok){setSavedTemplates(p=>({...p,[c.code]:true}));setByCode(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});setMyCode(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});setMyTemplates(p=>{const old=(p[c.code]||[]).filter(x=>x.text!==val);return{...p,[c.code]:[{text:val,count:1,personal:true},...old]};});}else{alert("加入資料庫失敗："+((r&&r.msg)||"未知錯誤，請再試一次"));}}catch(e){alert("加入資料庫失敗，請檢查網路連線後再試一次");}finally{setSavingTemplates(p=>({...p,[c.code]:false}));}},onDeleteChip:async(phrase)=>{if(!window.confirm("確定要刪除這筆常用資料嗎？\n\n「"+phrase+"」\n\n（按「確定」刪除；按「取消」保留）"))return;try{const r=await fetch(API,{method:"POST",keepalive:true,body:JSON.stringify({action:"deletePhrase",empId:me.empId,code:c.code,phrase})}).then(x=>x.json());if(r&&r.ok){setMyTemplates(p=>({...p,[c.code]:(p[c.code]||[]).filter(x=>x.text!==phrase)}));setByCode(p=>({...p,[c.code]:(p[c.code]||[]).filter(x=>x.text!==phrase)}));setMyCode(p=>({...p,[c.code]:(p[c.code]||[]).filter(x=>x.text!==phrase)}));}else{alert("刪除失敗："+((r&&r.msg)||"未知錯誤，請再試一次"));}}catch(e){alert("刪除失敗，請檢查網路連線後再試一次");}},onRemove:()=>removeExtra(c.code)})),
         !allFilled&&React.createElement("div",{style:{background:C.warnLight,border:`1px solid #FCD34D`,borderRadius:8,padding:"10px 14px",fontSize:18,color:C.warn}},"⚠️ 尚有 ",codesInSession.filter(c=>!codeValues[c.code]?.trim()).length," 個項目未填寫")),
     React.createElement("div",{style:{position:"fixed",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"12px 14px"}},
       submitErr&&React.createElement("div",{style:{background:"#FEE2E2",border:"1px solid #EF4444",borderRadius:8,padding:"10px 14px",fontSize:17,color:"#B91C1C",marginBottom:10,fontWeight:600}},"⚠️ ",submitErr,React.createElement("div",{style:{fontSize:14,fontWeight:400,marginTop:4,color:"#7F1D1D"}},"這筆尚未送出，請確認狀況後再按一次送出")),
-      React.createElement("button",{onClick:handleSubmit,disabled:busy||!(allFilled&&canSubmitNow()),style:{width:"100%",background:busy?C.ok:((allFilled&&canSubmitNow())?C.accent:C.border),color:busy?"white":((allFilled&&canSubmitNow())?"white":C.textSub),border:"none",borderRadius:10,padding:"14px",fontSize:21,fontWeight:700,cursor:(allFilled&&canSubmitNow())?"pointer":"default"}},busy?"處理中…":(canSubmitNow()?(allFilled?"確認送出　→":"請填寫所有項目"):"🔒 班次結束後才能送出")))));
+      React.createElement("button",{onClick:handleSubmit,disabled:busy||!(allFilled&&tubeOK&&canSubmitNow()),style:{width:"100%",background:busy?C.ok:((allFilled&&tubeOK&&canSubmitNow())?C.accent:C.border),color:busy?"white":((allFilled&&tubeOK&&canSubmitNow())?"white":C.textSub),border:"none",borderRadius:10,padding:"14px",fontSize:21,fontWeight:700,cursor:(allFilled&&tubeOK&&canSubmitNow())?"pointer":"default"}},busy?"處理中…":(canSubmitNow()?((allFilled&&tubeOK)?"確認送出　→":(!allFilled?"請填寫所有項目":"請完成管路留置狀況")):"🔒 班次結束後才能送出")))));
 
   // ── 送出完成 ──
   return React.createElement("div",{style:{minHeight:"100vh",background:C.bg,fontFamily:"'Noto Sans TC', sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}},
