@@ -1565,11 +1565,11 @@ function UploadTab({me}){
         for(let col=0;col<dateCells.length;col++){
           const day=dateCells[col]; if(!day||col>=svcRow.length)continue;
           const cell=String(svcRow[col]||""); if(!cell||cell===".")continue;
-          const pat=/(\d{1,2}:\d{2})~(\d{1,2}:\d{2})\s+([\u4e00-\u9fff]+)\s*\n?\[([^\]]+)\]\s*\n?((?:(?:BA|GA)\w+[^\n,]*×\d+[,\s]*)+)/g;
+          const pat=/(\d{1,2}:\d{2})~(\d{1,2}:\d{2})\s+([^\n\[]+?)\s*\n?\[([^\]]+)\]\s*\n?((?:(?:BA|GA)\w+[^\n,]*×\d+[,\s]*)+)/g;
           let mt,seq=1;
           while((mt=pat.exec(cell))!==null){
             const baItems=(mt[5].match(/((?:BA|GA)\d+)[^×]*×(\d+)/g)||[]).map(item=>{const m2=item.match(/((?:BA|GA)\d+)[^×]*×(\d+)/);return m2?m2[1]+"×"+m2[2]:item;});
-            rows.push([year,month,day,eId,eName,seq,mt[1]+"~"+mt[2],mt[3],mt[4],baItems.join(", ")]);
+            rows.push([year,month,day,eId,eName,seq,mt[1]+"~"+mt[2],String(mt[3]).trim(),mt[4],baItems.join(", ")]);
             seq++;
           }
         }
@@ -1753,7 +1753,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.9（2026/10/06）")),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.10（2026/10/06）")),
       // 維護模式狀態列（僅管理員看得到、可操作，點一下即可切換，不用改任何程式碼、不用重新部署）
       me.role==="管理員" && e("div",{
         onClick: maintBusy ? undefined : toggleMaintenance,
