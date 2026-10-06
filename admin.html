@@ -420,6 +420,45 @@ const SkinStatus = ({value,onChange}) => {
   return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6}},opts.map(o=>React.createElement("label",{key:o.v,onClick:()=>onChange(o.v),style:{display:"flex",alignItems:"center",gap:10,background:value===o.v?C.okLight:C.divider,border:`1.5px solid ${value===o.v?C.ok:"transparent"}`,borderRadius:8,padding:"10px 12px",cursor:"pointer"}},React.createElement("div",{style:{width:18,height:18,borderRadius:"50%",border:`2px solid ${value===o.v?C.ok:C.border}`,background:value===o.v?C.ok:"white",flexShrink:0}}),React.createElement("span",{style:{fontSize:19,color:C.text}},o.label))));
 };
 
+// ── 管路留置狀況（A4.9）：三選一 無/如前次/有；選「有」展開複選 ──
+const TUBE_ITEMS=["鼻胃管","尿管","氣切"];
+function buildTubeStr(sel,items,otherOn,otherText){
+  if(sel==="none")return "無";
+  if(sel==="prev")return "如前次";
+  if(sel==="has"){
+    const parts=(items||[]).slice();
+    if(otherOn){ const t=(otherText||"").trim(); parts.push(t?("其他（"+t+"）"):"其他"); }
+    return "有："+parts.join("、");
+  }
+  return "";
+}
+function parseTubeStr(s){
+  s=String(s||"").trim();
+  if(!s)return {sel:"",items:[],otherOn:false,otherText:""};
+  if(s==="無")return {sel:"none",items:[],otherOn:false,otherText:""};
+  if(s==="如前次")return {sel:"prev",items:[],otherOn:false,otherText:""};
+  if(s.indexOf("有")===0){
+    const body=s.replace(/^有[:：]?/,"");const items=[];let otherOn=false,otherText="";
+    body.split(/[、,，]/).forEach(p=>{p=p.trim();if(!p)return;
+      if(TUBE_ITEMS.indexOf(p)>=0){items.push(p);}
+      else if(p.indexOf("其他")===0){otherOn=true;const m=p.match(/[（(]([^）)]*)[）)]/);if(m)otherText=m[1];}});
+    return {sel:"has",items,otherOn,otherText};
+  }
+  return {sel:"",items:[],otherOn:false,otherText:""};
+}
+const TubeStatus = ({value,onChange,items,onToggleItem,otherOn,onToggleOther,otherText,onOtherText}) => {
+  const opts=[{v:"none",label:"無管路"},{v:"prev",label:"管路狀況如前次"},{v:"has",label:"有管路"}];
+  const Radio=o=>React.createElement("label",{key:o.v,onClick:()=>onChange(o.v),style:{display:"flex",alignItems:"center",gap:10,background:value===o.v?C.okLight:C.divider,border:`1.5px solid ${value===o.v?C.ok:"transparent"}`,borderRadius:8,padding:"10px 12px",cursor:"pointer"}},React.createElement("div",{style:{width:18,height:18,borderRadius:"50%",border:`2px solid ${value===o.v?C.ok:C.border}`,background:value===o.v?C.ok:"white",flexShrink:0}}),React.createElement("span",{style:{fontSize:19,color:C.text}},o.label));
+  const Check=(label,on,fn)=>React.createElement("label",{key:label,onClick:fn,style:{display:"inline-flex",alignItems:"center",gap:8,background:on?C.okLight:C.divider,border:`1.5px solid ${on?C.ok:"transparent"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer"}},React.createElement("div",{style:{width:18,height:18,borderRadius:4,border:`2px solid ${on?C.ok:C.border}`,background:on?C.ok:"white",flexShrink:0,color:"white",fontSize:14,lineHeight:"15px",textAlign:"center"}},on?"✓":""),React.createElement("span",{style:{fontSize:19,color:C.text}},label));
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+    opts.map(Radio),
+    value==="has"&&React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8,marginTop:4,marginLeft:4,paddingLeft:10,borderLeft:`3px solid ${C.ok}`}},
+      React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
+        TUBE_ITEMS.map(it=>Check(it,(items||[]).indexOf(it)>=0,()=>onToggleItem(it))),
+        Check("其他",otherOn,onToggleOther)),
+      otherOn&&React.createElement("input",{value:otherText,onChange:e=>onOtherText(e.target.value),placeholder:"請填寫其他管路（例：胃造口、尿套）",style:{width:"100%",border:`1px solid ${C.warn}`,borderRadius:7,padding:"8px 10px",fontSize:19,fontFamily:"inherit",boxSizing:"border-box"}})));
+};
+
 const CodeBlock = ({codeItem,value,onChange,extra,onRemove,fromLast,chips,onSaveTemplate,saved}) => {
   const [showChips,setShowChips] = useState(false);
   const [showMore,setShowMore] = useState(false);
@@ -765,12 +804,14 @@ function LogsTab({me, viewSup}){
   function openEdit(log){
     if(editRow===log.row){ setEditRow(null); return; }
     setEditRow(log.row);
+    var _pt=parseTubeStr(log.tube||"");
     setEditData({
       time:   log.time||"",
       codes:  splitLogToCodes(log),
       skin:   log.skin||"ok",
       skinNote:log.skinNote||"",
       tube:   log.tube||"",
+      tubeSel: _pt.sel, tubeItems: _pt.items, tubeOtherOn: _pt.otherOn, tubeOther: _pt.otherText,
       note:   log.note||"",
       status: log.status||"已送出"
     });
@@ -832,6 +873,11 @@ function LogsTab({me, viewSup}){
   }
 
   async function saveEdit(log){
+    // ★A4.9：管路留置必填
+    const _sel=editData.tubeSel, _items=editData.tubeItems||[], _oOn=editData.tubeOtherOn, _oTxt=editData.tubeOther;
+    const _tubeOK=(_sel==="none"||_sel==="prev")||(_sel==="has"&&(_items.length>0||_oOn)&&!(_oOn&&!(_oTxt||"").trim()));
+    if(!_tubeOK){ setEditMsg(_sel===""||!_sel?"請先選擇「管路留置狀況」":(_sel==="has"&&_items.length===0&&!_oOn?"選「有管路」請至少勾一項（或勾其他並填寫）":"勾了「其他」請填寫管路說明")); return; }
+    const tubeStr=buildTubeStr(_sel,_items,_oOn,_oTxt);
     setEditBusy(true); setEditMsg("");
     try{
       const codes = (editData.codes||[]).filter(c=>c.code);
@@ -839,7 +885,8 @@ function LogsTab({me, viewSup}){
       const iCol = codes.map(c=>c.summary||"").filter(Boolean).join("\n");
       const r = await adminAPI("adminEditLogFull",{
         rowNum: log.row, time:editData.time, baCode:hCol, summary:iCol,
-        skin:editData.skin, skinNote:editData.skinNote, status:editData.status, note:editData.note
+        skin:editData.skin, skinNote:editData.skinNote, status:editData.status, note:editData.note,
+        tube: tubeStr
       });
       if(r.ok){
         setEditMsg("✓ 已儲存");
@@ -885,7 +932,12 @@ function LogsTab({me, viewSup}){
           e(SkinStatus,{value:editData.skin,onChange:v=>setEditData({...editData,skin:v})}),
           (editData.skin==="new"||editData.skin==="prev") && e("textarea",{value:editData.skinNote,onChange:ev=>setEditData({...editData,skinNote:ev.target.value}),placeholder:"請說明異常狀況（位置、類型、尺寸）",rows:2,
             style:{marginTop:8,width:"100%",border:`1px solid ${C.warn}`,borderRadius:7,padding:"8px 10px",fontSize:19,fontFamily:"inherit",resize:"none",boxSizing:"border-box"}}),
-          e("div",{style:{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.divider}`,fontSize:17,color:C.text}},"🩺 管路留置：",e("b",null,editData.tube||"（未填）"))),
+          e("div",{style:{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.divider}`}},
+            e("div",{style:{marginBottom:10,display:"flex",alignItems:"center",gap:8}},e(PillTitle,{icon:"🩺"},"管路留置狀況"),e("span",{style:{color:C.danger,fontSize:15,fontWeight:700}},"＊必填")),
+            e(TubeStatus,{value:editData.tubeSel,onChange:v=>setEditData({...editData,tubeSel:v}),items:editData.tubeItems,
+              onToggleItem:(it)=>{const a=(editData.tubeItems||[]);setEditData({...editData,tubeItems:a.indexOf(it)>=0?a.filter(x=>x!==it):[...a,it]});},
+              otherOn:editData.tubeOtherOn,onToggleOther:()=>setEditData({...editData,tubeOtherOn:!editData.tubeOtherOn}),
+              otherText:editData.tubeOther,onOtherText:(t)=>setEditData({...editData,tubeOther:t})}))),
 
         e("div",{style:{display:"flex",flexDirection:"column",gap:10}},
           e(PillTitle,{icon:"📝"},"服務概況（BA碼）"),
@@ -1701,7 +1753,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.8（2026/10/01）")),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.9（2026/10/06）")),
       // 維護模式狀態列（僅管理員看得到、可操作，點一下即可切換，不用改任何程式碼、不用重新部署）
       me.role==="管理員" && e("div",{
         onClick: maintBusy ? undefined : toggleMaintenance,
