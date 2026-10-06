@@ -661,6 +661,17 @@ function parseBaField(baStr){
 // summary 各碼內容用換行分段，依序對應第 N 碼；段數不足則留空
 function splitLogToCodes(log){
   const codes=parseBaField(log.baCode);
+  // ★A4.11：優先讀 P 欄分碼JSON（跟服務員介面同一份來源），每碼對到自己的內容（可含多行），不會錯位。
+  //   P欄沒有(舊資料/補登) → 退回原本「用換行依序切」的相容行為。
+  let pMap=null;
+  if(log.codeMap){ try{ pMap=JSON.parse(log.codeMap); }catch(e){ pMap=null; } }
+  if(pMap){
+    return codes.map(c=>{
+      const u=String(c.code).toUpperCase();
+      const v=(pMap[c.code]!==undefined)?pMap[c.code]:(pMap[u]!==undefined?pMap[u]:"");
+      return {code:c.code, qty:c.qty||1, summary:String(v==null?"":v).trim()};
+    });
+  }
   const segs=String(log.summary||"").split(/\n/);
   return codes.map((c,i)=>({code:c.code, qty:c.qty||1, summary:(segs[i]!==undefined?segs[i]:"").trim()}));
 }
@@ -883,8 +894,11 @@ function LogsTab({me, viewSup}){
       const codes = (editData.codes||[]).filter(c=>c.code);
       const hCol = codes.map(c=>c.code+"×"+(c.qty||1)).join(", ");
       const iCol = codes.map(c=>c.summary||"").filter(Boolean).join("\n");
+      // ★A4.11：同時送分碼JSON寫回P欄，確保編輯後I欄與P欄一致、服務員端不再錯位
+      const codeMapObj={}; codes.forEach(c=>{ if((c.summary||"").trim()) codeMapObj[String(c.code).toUpperCase()]=c.summary; });
       const r = await adminAPI("adminEditLogFull",{
         rowNum: log.row, time:editData.time, baCode:hCol, summary:iCol,
+        codeMap: JSON.stringify(codeMapObj),
         skin:editData.skin, skinNote:editData.skinNote, status:editData.status, note:editData.note,
         tube: tubeStr
       });
@@ -1753,7 +1767,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.10（2026/10/06）")),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.11（2026/10/07）")),
       // 維護模式狀態列（僅管理員看得到、可操作，點一下即可切換，不用改任何程式碼、不用重新部署）
       me.role==="管理員" && e("div",{
         onClick: maintBusy ? undefined : toggleMaintenance,
