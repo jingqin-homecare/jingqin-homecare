@@ -718,6 +718,7 @@ function App() {
   const [codeValues,setCodeValues] = useState({});
   const [fromLastMap,setFromLastMap] = useState({});
   const [extraCodes,setExtraCodes] = useState([]);
+  const [droppedCodes,setDroppedCodes] = useState([]);   // ★v97：被班表移除、但原本有內容的碼（開啟時提示用）
   const [showAddPanel,setShowAddPanel] = useState(false);
   const [savedTemplates,setSavedTemplates] = useState({});
   const [savingTemplates,setSavingTemplates] = useState({});  // ★v52新增：按下加入資料庫當下、伺服器還沒回應前的「處理中」狀態
@@ -986,28 +987,30 @@ function App() {
 
   const handleOpen=idx=>{
     const s=dayList[idx]; setActiveIdx(idx);
-    if(savedData[idx]){setSkin(savedData[idx].skin);setSkinNote(savedData[idx].skinNote||"");setCodeValues(savedData[idx].codeValues);setExtraCodes(savedData[idx].extraCodes||[]);setFromLastMap({});setTube(savedData[idx].tube||"");setTubeItems(savedData[idx].tubeItems||[]);setTubeOtherOn(!!savedData[idx].tubeOtherOn);setTubeOther(savedData[idx].tubeOther||"");}
+    if(savedData[idx]){setSkin(savedData[idx].skin);setSkinNote(savedData[idx].skinNote||"");setCodeValues(savedData[idx].codeValues);setExtraCodes(savedData[idx].extraCodes||[]);setFromLastMap({});setTube(savedData[idx].tube||"");setTubeItems(savedData[idx].tubeItems||[]);setTubeOtherOn(!!savedData[idx].tubeOtherOn);setTubeOther(savedData[idx].tubeOther||"");setDroppedCodes([]);}
     else if(s.saved&&s.saved.codeValues&&Object.keys(s.saved.codeValues).length>0){
       // ★已送出：顯示當初真正填寫的內容，不走「帶入上次」
       const sv=s.saved;
       // 舊紀錄皮膚可能是 prev(如前次)，選項已拿掉 → 以「有異常」呈現，說明照舊顯示
       setSkin(sv.skin==="prev"?"new":(sv.skin||"ok")); setSkinNote(sv.skinNote||"");
       {const pt=parseTubeStr(sv.tube);setTube(pt.tube);setTubeItems(pt.items);setTubeOtherOn(pt.otherOn);setTubeOther(pt.otherText);}
-      const init={},fl={},ext=[];
+      const init={},fl={};
       s.codes.forEach(c=>{
         if(sv.codeValues[c.code]!==undefined&&sv.codeValues[c.code]!==""){
-          init[c.code]=sv.codeValues[c.code];   // 當初真的填過的內容照舊顯示
+          init[c.code]=sv.codeValues[c.code];   // 當初真的填過、且目前班表仍有的碼
         }
         // ★v86：不再自動帶入上次；沒填過的碼留空，由照服員自行從資料庫點選或打字
       });
-      // 日誌有、但班表已無的碼（班表事後異動）也顯示出來，避免資料看不到
+      // ★v97：自動與班表同步──日誌有、但班表已無的碼（班表事後異動）直接移除、不再顯示，
+      //   填寫畫面永遠等於目前班表。被移除的碼若原本有內容，收集起來提示服務員（不無聲丟資料）。
+      const dropped=[];
       Object.keys(sv.codeValues).forEach(code=>{
         if(!s.codes.find(c=>c.code===code)){
-          init[code]=sv.codeValues[code];
-          ext.push({code:code,name:code,qty:1});
+          const _cv=String(sv.codeValues[code]||"").trim();
+          if(_cv) dropped.push({code:code,content:_cv});
         }
       });
-      setCodeValues(init); setFromLastMap(fl); setExtraCodes(ext);
+      setCodeValues(init); setFromLastMap(fl); setExtraCodes([]); setDroppedCodes(dropped);
     }
     else{
       // ★皮膚：拿掉「如前次」，一律預設「無異常」，服務員自己寫當班所見（不自動帶入任何人的內容）
@@ -1017,7 +1020,7 @@ function App() {
       {const pt=parseTubeStr(String(myLastTube[s.client]||"").trim());
        setTube(pt.tube);setTubeItems(pt.items);setTubeOtherOn(pt.otherOn);setTubeOther(pt.otherText);}
       // ★v86：不再自動帶入上次服務內容；輸入框一律留空，照服員自行點選資料庫或打字
-      setCodeValues({}); setFromLastMap({}); setExtraCodes([]);
+      setCodeValues({}); setFromLastMap({}); setExtraCodes([]); setDroppedCodes([]);
     }
     setShowAddPanel(false); setScreen("fill");
   };
@@ -1222,9 +1225,11 @@ function App() {
       !loadingDay&&!loadError&&dayList.length===0&&React.createElement("div",{style:{textAlign:"center",padding:"30px 0",color:C.textSub,fontSize:18}},"這天沒有排班"),
       !loadingDay&&dayList.map((s,idx)=>{
         const done=submitted.includes(idx);
+        // ★v97：已送出、但「目前排定的碼有空白」(後端 complete=false) → 視為有未填，要提醒補填
+        const incomplete=done&&s.complete===false;
         const locked=isToday&&NOW_HOUR<endHourOf(s.time);
-        return React.createElement("div",{key:idx,style:{background:C.card,borderRadius:12,border:`1px solid ${done?C.ok:C.border}`,borderLeft:`5px solid ${done?C.ok:locked?C.warn:C.primary}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(47,74,53,.08)"}},
-          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:done?C.okLight:"#FFFFFF"}},
+        return React.createElement("div",{key:idx,style:{background:C.card,borderRadius:12,border:`1px solid ${incomplete?C.warn:done?C.ok:C.border}`,borderLeft:`5px solid ${incomplete?C.warn:done?C.ok:locked?C.warn:C.primary}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(47,74,53,.08)"}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:incomplete?C.warnLight:done?C.okLight:"#FFFFFF"}},
             React.createElement("div",null,
               React.createElement("div",{style:{fontSize:20,color:C.textSub,marginBottom:3}},s.time,locked&&!done&&React.createElement("span",{style:{color:C.warn,marginLeft:6,whiteSpace:"nowrap"}},"· 尚未結束")),
               React.createElement("div",{style:{fontSize:21,fontWeight:700,color:C.text}},s.client)),
@@ -1234,7 +1239,10 @@ function App() {
               const qs=qi?qi.status:null;
               if(done){
                 if(qs==='sent'||qs===null){
-                  return React.createElement("button",{onClick:()=>handleOpen(idx),style:{flexShrink:0,background:C.okLight,border:`1px solid ${C.ok}`,borderRadius:8,padding:"6px 12px",fontSize:16,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},
+                  return incomplete
+                    ? React.createElement("button",{onClick:()=>handleOpen(idx),style:{flexShrink:0,background:C.warnLight,border:`1.5px solid ${C.warn}`,borderRadius:8,padding:"6px 12px",fontSize:16,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},
+                        React.createElement("span",{style:{color:C.warn}},"⚠️ 有未填 · "),React.createElement("span",{style:{color:C.accent}},"補填"))
+                    : React.createElement("button",{onClick:()=>handleOpen(idx),style:{flexShrink:0,background:C.okLight,border:`1px solid ${C.ok}`,borderRadius:8,padding:"6px 12px",fontSize:16,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},
                     React.createElement("span",{style:{color:C.ok}},"✅ 已送出 · "),React.createElement("span",{style:{color:C.accent}},"可修改"));
                 } else if(qs==='pending'){
                   return React.createElement("button",{onClick:()=>handleOpen(idx),style:{flexShrink:0,background:"#FFF8E1",border:"1.5px solid #F59E0B",borderRadius:8,padding:"6px 12px",fontSize:16,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},
@@ -1274,6 +1282,11 @@ function App() {
         React.createElement("div",{style:{fontSize:17,opacity:.85,whiteSpace:"nowrap"}},fillDateStr))),
     React.createElement("div",{style:{padding:"14px 14px 100px",display:"flex",flexDirection:"column",gap:14}},
       Object.keys(fromLastMap).length>0&&React.createElement("div",{style:{background:C.okLight,border:`1px solid ${C.ok}`,borderRadius:8,padding:"10px 14px",fontSize:18,color:C.ok}},"↩ 已自動帶入上次服務內容，請確認、增減或修改"),
+      droppedCodes.length>0&&React.createElement("div",{style:{background:C.warnLight,border:`1px solid ${C.warn}`,borderRadius:8,padding:"10px 14px",fontSize:17,color:C.warn,lineHeight:1.5}},
+        "⚠️ 下列原排項目已不在最新班表，已依班表自動移除：",
+        React.createElement("div",{style:{marginTop:6,color:C.text,fontSize:16}},
+          droppedCodes.map((d,i)=>React.createElement("div",{key:i,style:{marginTop:2}},"・",d.code,"：",d.content))),
+        React.createElement("div",{style:{marginTop:6,fontSize:15,color:C.textSub}},"如仍需記錄這些內容，請改填到目前排定的項目後再送出。")),
       !canSubmitNow()&&React.createElement("div",{style:{background:C.warnLight,border:`1px solid ${C.warn}`,borderRadius:8,padding:"10px 14px",fontSize:18,color:C.warn}},"🕐 此班 ",session.time," 尚未結束，可先編輯，須等班次結束後才能送出"),
       React.createElement("div",{style:{background:C.card,borderRadius:12,padding:"14px",border:`1px solid ${C.border}`}},
         React.createElement("div",{style:{marginBottom:12}},React.createElement(PillTitle,{icon:"🩺"},"身體或皮膚狀況")),
