@@ -1111,7 +1111,7 @@ function App() {
       // 後端確認成功，才顯示已送出、切回列表
       setSavedData(p=>({...p,[activeIdx]:{codeValues:{...codeValues},skin,skinNote,tube,tubeItems:[...tubeItems],tubeOtherOn,tubeOther,extraCodes:[...extraCodes]}}));
       setSubmitted(prev=>prev.includes(activeIdx)?prev:[...prev,activeIdx]);
-      setDayList(prev=>prev.map((s,i)=>i===activeIdx?{...s,done:true,complete:true}:s)); // ★修正問題1：送出成功立即把本班標記為完整，徽章不再卡在假「有未填·補填」
+      setDayList(prev=>prev.map((s,i)=>i===activeIdx?{...s,done:true,complete:true,needResubmit:false}:s)); // ★修正問題1：送出成功立即把本班標記為完整，徽章不再卡在假「有未填·補填」
       setScreen("list");
       setBusy(false);
       loadMissing(me.empId,pickMonth); // 送出成功 → 更新未填警示
@@ -1125,7 +1125,7 @@ function App() {
       setQueueVersion(v=>v+1);
       setSavedData(p=>({...p,[activeIdx]:{codeValues:{...codeValues},skin,skinNote,tube,tubeItems:[...tubeItems],tubeOtherOn,tubeOther,extraCodes:[...extraCodes]}}));
       setSubmitted(prev=>prev.includes(activeIdx)?prev:[...prev,activeIdx]);
-      setDayList(prev=>prev.map((s,i)=>i===activeIdx?{...s,done:true,complete:true}:s)); // ★同上：離線排入佇列也先樂觀標記完整，避免假「有未填」
+      setDayList(prev=>prev.map((s,i)=>i===activeIdx?{...s,done:true,complete:true,needResubmit:false}:s)); // ★同上：離線排入佇列也先樂觀標記完整，避免假「有未填」
       setScreen("list");
       setBusy(false);
       updateQueueItem(qId,{status:'pending',failMsg:'目前離線，將於恢復連線後自動補傳'});
@@ -1180,7 +1180,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.4（2026/11/04）")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.5（2026/11/04）")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
@@ -1273,9 +1273,12 @@ function App() {
         const done=submitted.includes(idx);
         // ★v97：已送出、但「目前排定的碼有空白」(後端 complete=false) → 視為有未填，要提醒補填
         const incomplete=done&&s.complete===false;
+        // ★S1.5：已填完、但日誌支數/碼別跟現在班表對不上(班表事後改過) → 提示「需重新送出」
+        const needRe=done&&!incomplete&&s.needResubmit===true;
+        const warnState=incomplete||needRe;
         const locked=isToday&&LIVE_HOUR<endHourOf(s.time);
-        return React.createElement("div",{key:idx,style:{background:C.card,borderRadius:12,border:`1px solid ${incomplete?C.warn:done?C.ok:C.border}`,borderLeft:`5px solid ${incomplete?C.warn:done?C.ok:locked?C.warn:C.primary}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(47,74,53,.08)"}},
-          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:incomplete?C.warnLight:done?C.okLight:"#FFFFFF"}},
+        return React.createElement("div",{key:idx,style:{background:C.card,borderRadius:12,border:`1px solid ${warnState?C.warn:done?C.ok:C.border}`,borderLeft:`5px solid ${warnState?C.warn:done?C.ok:locked?C.warn:C.primary}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(47,74,53,.08)"}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:warnState?C.warnLight:done?C.okLight:"#FFFFFF"}},
             React.createElement("div",null,
               React.createElement("div",{style:{fontSize:20,color:C.textSub,marginBottom:3}},s.time,locked&&!done&&React.createElement("span",{style:{color:C.warn,marginLeft:6,whiteSpace:"nowrap"}},"· 尚未結束")),
               React.createElement("div",{style:{fontSize:21,fontWeight:700,color:C.text}},s.client)),
@@ -1288,6 +1291,9 @@ function App() {
                   return incomplete
                     ? React.createElement("button",{onClick:()=>handleOpen(idx),style:{flexShrink:0,background:C.warnLight,border:`1.5px solid ${C.warn}`,borderRadius:8,padding:"6px 12px",fontSize:16,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},
                         React.createElement("span",{style:{color:C.warn}},"⚠️ 有未填 · "),React.createElement("span",{style:{color:C.accent}},"補填"))
+                    : needRe
+                    ? React.createElement("button",{onClick:()=>handleOpen(idx),style:{flexShrink:0,background:C.warnLight,border:`1.5px solid ${C.warn}`,borderRadius:8,padding:"6px 12px",fontSize:16,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},
+                        React.createElement("span",{style:{color:C.warn}},"⚠️ 班表已更新 · "),React.createElement("span",{style:{color:C.accent}},"需重新送出"))
                     : React.createElement("button",{onClick:()=>handleOpen(idx),style:{flexShrink:0,background:C.okLight,border:`1px solid ${C.ok}`,borderRadius:8,padding:"6px 12px",fontSize:16,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},
                     React.createElement("span",{style:{color:C.ok}},"✅ 已送出 · "),React.createElement("span",{style:{color:C.accent}},"可修改"));
                 } else if(qs==='pending'){
@@ -1333,6 +1339,8 @@ function App() {
         React.createElement("div",{style:{marginTop:6,color:C.text,fontSize:16}},
           droppedCodes.map((d,i)=>React.createElement("div",{key:i,style:{marginTop:2}},"・",d.code,"：",d.content))),
         React.createElement("div",{style:{marginTop:6,fontSize:15,color:C.textSub}},"如仍需記錄這些內容，請改填到目前排定的項目後再送出。")),
+      session&&session.needResubmit&&React.createElement("div",{style:{background:C.warnLight,border:`1px solid ${C.warn}`,borderRadius:8,padding:"10px 14px",fontSize:17,color:C.warn,lineHeight:1.5}},
+        "⚠️ 這一班的班表支數已更新（與你上次送出的不同）。內容已帶回，請確認後再按一次「確認送出」即可更新，不用重填。"),
       !canSubmitNow()&&React.createElement("div",{style:{background:C.warnLight,border:`1px solid ${C.warn}`,borderRadius:8,padding:"10px 14px",fontSize:18,color:C.warn}},"🕐 此班 ",session.time," 尚未結束，可先編輯，須等班次結束後才能送出"),
       React.createElement("div",{style:{background:C.card,borderRadius:12,padding:"14px",border:`1px solid ${C.border}`}},
         React.createElement("div",{style:{marginBottom:12}},React.createElement(PillTitle,{icon:"🩺"},"身體或皮膚狀況")),
