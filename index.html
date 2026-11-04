@@ -497,7 +497,9 @@ const NOW_STR = `${String(_now.getHours()).padStart(2,"0")}:${String(_now.getMin
 //   推2個月」，共3個月選項，之後每個月都會自動對，不用再手動改。
 const _nowMonthNum = _now.getMonth()+1;
 const MONTH_OPTS = [2,1,0].map(back=>{ let m=_nowMonthNum-back; while(m<1) m+=12; while(m>12) m-=12; return m; });
-const cleanName = n => n.replace(/\(.*?\)/g,"");
+const cleanName = n => String(n==null?"":n).replace(/\(.*?\)/g,"");
+// ★S1.1：顯示用——把子碼字母前加連字號(BA17d→BA17-d)，純顯示、不影響儲存碼。
+const dispCode = c => String(c||"").replace(/^([A-Za-z]+\d+)([a-z])$/,"$1-$2");
 
 const ALL_CODES = [
   {code:"BA01",name:"基本身體清潔"},{code:"BA02",name:"基本日常照顧"},
@@ -506,7 +508,11 @@ const ALL_CODES = [
   {code:"BA08",name:"足部照護"},{code:"BA10",name:"翻身拍背"},
   {code:"BA11",name:"肢體關節活動"},{code:"BA12",name:"協助上下樓梯"},
   {code:"BA13",name:"陪同外出"},{code:"BA14",name:"陪同就醫"},
-  {code:"BA15",name:"家務協助"},{code:"BA16",name:"代購或代領"},{code:"BA17",name:"餐食製備"},
+  {code:"BA15",name:"家務協助"},{code:"BA16",name:"代購或代領"},
+  // ★S1.1：BA17 細分為 BA17a~e(醫事照護)，移除原誤加的「BA17 餐食製備」。
+  {code:"BA17",name:"醫事照護"},
+  {code:"BA17a",name:"氣道內(人工氣道)抽吸"},{code:"BA17b",name:"口腔內(口咽、鼻咽)分泌物抽吸"},
+  {code:"BA17c",name:"尿管及鼻胃管護理"},{code:"BA17d",name:"血糖機驗血糖或甘油球通便"},{code:"BA17e",name:"依指示置入藥盒"},
   {code:"BA18",name:"安全看視"},{code:"BA20",name:"陪伴服務"},
   {code:"BA22",name:"巡視服務"},{code:"BA23",name:"協助洗頭"},
   {code:"BA24",name:"協助排泄"},{code:"GA09",name:"居家喘息服務"}
@@ -531,7 +537,7 @@ const FooterBar = () => React.createElement("div",{style:{background:C.primary,p
 
 const endHourOf = t => { const m=t.match(/~(\d{2}):(\d{2})/); return m?parseInt(m[1])+parseInt(m[2])/60:24; };
 
-const Tag = ({code,name,extra,qty}) => React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:4,background:extra?C.accentLight:C.primaryLight,color:extra?C.accent:C.primary,border:extra?`1px solid ${C.accentBorder}`:"none",borderRadius:6,padding:"2px 8px",fontSize:21,fontWeight:600}},code,qty&&qty>1?`×${qty}`:"");
+const Tag = ({code,name,extra,qty}) => React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:4,background:extra?C.accentLight:C.primaryLight,color:extra?C.accent:C.primary,border:extra?`1px solid ${C.accentBorder}`:"none",borderRadius:6,padding:"2px 8px",fontSize:21,fontWeight:600}},dispCode(code),qty&&qty>1?`×${qty}`:"");
 
 const SkinStatus = ({value,onChange}) => {
   // ★拿掉「異常如前次」：每位服務員各自寫當班所見，避免帶入別人的內容
@@ -1071,7 +1077,7 @@ function App() {
     if(!canSubmitNow())return;
     setBusy(true);
     setSubmitErr(""); // 清掉上次的錯誤提示
-    const records=codesInSession.map(c=>({code:c.code,summary:codeValues[c.code]||"",extra:!!c.extra,qty:c.qty||1}));
+    const records=codesInSession.map(c=>({code:c.code,summary:codeValues[c.code]||"",extra:!!c.extra,qty:c.qty||1,name:c.name||""}));  // ★S1.1：帶 name(仁寶字樣)供後端存S欄
     // 皮膚只有「無異常/有異常」；管路只有「無/有」——都直接存實際值（已無「如前次」）
     const _tubeStore=buildTubeStr(tube,tubeItems,tubeOtherOn,tubeOther);
     const _skinNoteStore=(skin==="new")?skinNote.trim():"";
@@ -1162,7 +1168,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.0（2026/11/04）")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.1（2026/11/04）")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
