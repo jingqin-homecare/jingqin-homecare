@@ -1256,33 +1256,50 @@ function MissingTab({me, viewSup}){
     !loading && loaded && missing.length===0 && qtyBad.length===0 && e("div",{style:{textAlign:"center",padding:60,color:C.ok,fontSize:19,lineHeight:1.8}},"✅",e("br"),"此範圍無漏填、支數也相符"),
     !loading && missing.length>0 && e("div",{style:{fontSize:16,color:C.warn,marginBottom:12,fontWeight:600}},"共 "+(new Set(missing.map(m=>m.month+"/"+m.day)).size)+" 天、"+(new Set(missing.map(m=>m.month+"/"+m.day+"|"+m.empId+"|"+m.client+"|"+(m.time||""))).size)+" 班、"+missing.length+" 筆未填"),
     fillMsg && e("div",{style:{fontSize:15,color:fillMsg.startsWith("✓")?C.ok:C.danger,marginBottom:10,fontWeight:600}},fillMsg),
-    // ★v99：支數不符區塊 — 依照服員分組、可展開（碼別有填但支數與班表不同，需修正現有日誌）
+    // ★A4.20：支數不符分兩區顯示 —
+    //   ① 日誌支數不足(班表>日誌)：班表有、日誌少，需提醒服務員補填。
+    //   ② 日誌多出班表(日誌>班表)：服務員填了班表沒有的碼(或重複/填錯)，需管理者確認要移除日誌或補班表。
+    //   每筆 qtyMismatch 的 schedQty≠logQty，故可依大小乾淨分到兩區。
     !loading && qtyBad.length>0 && (()=>{
       const _mins = t=>{ const mm=String(t||"").match(/(\d{1,2}):(\d{2})/); return mm?parseInt(mm[1],10)*60+parseInt(mm[2],10):0; };
       const _dayC = l=> new Set(l.map(x=>x.month+"/"+x.day)).size;
       const _shiftC = l=> new Set(l.map(x=>x.month+"/"+x.day+"|"+x.empId+"|"+x.client+"|"+(x.time||""))).size;
-      const _grp = {};
-      qtyBad.forEach(q=>{ const id=q.empId||"?"; if(!_grp[id]) _grp[id]={name:(q.empName||q.worker||id),list:[]}; _grp[id].list.push(q); });
-      const _keys = Object.keys(_grp).sort((a,b)=>_grp[b].list.length-_grp[a].list.length);
+      const _num = v=>{ const n=parseInt(v,10); return isNaN(n)?0:n; };
+      // ★A4.20：日誌=0 的碼屬「完全沒填」，已由上方「漏填」清單呈現，支數不足區只收「有填但支數少」(日誌>0)避免重複。
+      const qtyUnder = qtyBad.filter(q=>_num(q.schedQty) > _num(q.logQty) && _num(q.logQty) > 0);  // 班表有、日誌填了但不足
+      const qtyOver  = qtyBad.filter(q=>_num(q.logQty)  > _num(q.schedQty));                        // 日誌多出班表
+      if(!qtyUnder.length && !qtyOver.length) return null;   // 兩區都空(例如只剩日誌=0、已在漏填呈現)就不顯示
+      const renderSec = (list, secKey, headColor, title, cardBg, cardBorder, detailColor) => {
+        if(!list.length) return null;
+        const _grp = {};
+        list.forEach(q=>{ const id=q.empId||"?"; if(!_grp[id]) _grp[id]={name:(q.empName||q.worker||id),list:[]}; _grp[id].list.push(q); });
+        const _keys = Object.keys(_grp).sort((a,b)=>_grp[b].list.length-_grp[a].list.length);
+        return e("div",{key:secKey,style:{marginBottom:16}},
+          e("div",{style:{fontSize:16,color:headColor,marginBottom:10,fontWeight:700}}, title),
+          _keys.map(id=>{
+            const g=_grp[id]; const gk=secKey+"_"+id; const open=!!openQGrp[gk];
+            return e("div",{key:"qg"+gk,style:{marginBottom:10}},
+              e("div",{onClick:()=>setOpenQGrp(p=>({...p,[gk]:!p[gk]})),
+                style:{background:open?headColor:C.card,color:open?"white":C.text,borderRadius:10,padding:"14px 16px",border:`1.5px solid ${open?headColor:C.border}`,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                e("span",{style:{fontSize:19,fontWeight:700}},g.name),
+                e("span",{style:{fontSize:17,fontWeight:600,color:open?"white":headColor}},_shiftC(g.list)+" 班 "+g.list.length+" 筆（"+_dayC(g.list)+" 天）"+(open?" ▲":" ▼"))),
+              open && e("div",{style:{marginTop:8,paddingLeft:6}},
+                g.list.slice().sort((x,y)=>(x.month-y.month)||(x.day-y.day)||(_mins(x.time)-_mins(y.time))).map((q,i)=>
+                  e("div",{key:"q"+gk+i,style:{background:cardBg,borderRadius:10,marginBottom:8,padding:"12px 14px",border:"1px solid "+cardBorder}},
+                    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}},
+                      e("span",{style:{fontSize:16,color:C.textSub}},(q.month||"")+"/"+(q.day||"")+" "+(q.time||"")),
+                      e("span",{style:{fontSize:17,color:C.warn,fontWeight:600}},q.client)),
+                    e("div",{style:{marginTop:8,fontSize:15,fontWeight:700,color:detailColor}},
+                      dispCode(q.code)+"：班表 "+q.schedQty+" 支 ／ 日誌 "+q.logQty+" 支")))));
+          }));
+      };
       return e("div",{style:{marginBottom:14}},
-        e("div",{style:{fontSize:16,color:C.danger,marginBottom:10,fontWeight:700}},
-          "⚠️ 支數不符　共 "+_dayC(qtyBad)+" 天、"+_shiftC(qtyBad)+" 班、"+qtyBad.length+" 筆（碼別有填、但支數跟班表不同，需修正現有日誌）"),
-        _keys.map(id=>{
-          const g=_grp[id]; const open=!!openQGrp[id];
-          return e("div",{key:"qg"+id,style:{marginBottom:10}},
-            e("div",{onClick:()=>setOpenQGrp(p=>({...p,[id]:!p[id]})),
-              style:{background:open?C.danger:C.card,color:open?"white":C.text,borderRadius:10,padding:"14px 16px",border:`1.5px solid ${open?C.danger:C.border}`,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}},
-              e("span",{style:{fontSize:19,fontWeight:700}},g.name),
-              e("span",{style:{fontSize:17,fontWeight:600,color:open?"white":C.danger}},"支數不符 "+_shiftC(g.list)+" 班 "+g.list.length+" 筆（"+_dayC(g.list)+" 天）"+(open?" ▲":" ▼"))),
-            open && e("div",{style:{marginTop:8,paddingLeft:6}},
-              g.list.slice().sort((x,y)=>(x.month-y.month)||(x.day-y.day)||(_mins(x.time)-_mins(y.time))).map((q,i)=>
-                e("div",{key:"q"+i,style:{background:"#fff0f0",borderRadius:10,marginBottom:8,padding:"12px 14px",border:"1px solid #f0b0b0"}},
-                  e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}},
-                    e("span",{style:{fontSize:16,color:C.textSub}},(q.month||"")+"/"+(q.day||"")+" "+(q.time||"")),
-                    e("span",{style:{fontSize:17,color:C.warn,fontWeight:600}},q.client)),
-                  e("div",{style:{marginTop:8,fontSize:15,fontWeight:700,color:C.danger}},
-                    dispCode(q.code)+"：班表 "+q.schedQty+" 支 ／ 日誌 "+q.logQty+" 支")))));
-        }));
+        renderSec(qtyUnder,"qUnder",C.danger,
+          "⚠️ 日誌支數不足　共 "+_dayC(qtyUnder)+" 天、"+_shiftC(qtyUnder)+" 班、"+qtyUnder.length+" 筆（班表有、日誌少 → 需提醒服務員補填）",
+          "#fff0f0","#f0b0b0",C.danger),
+        renderSec(qtyOver,"qOver",C.warn,
+          "ℹ️ 日誌多出班表沒有的項目　共 "+_dayC(qtyOver)+" 天、"+_shiftC(qtyOver)+" 班、"+qtyOver.length+" 筆（服務員填了班表沒有的碼/重複 → 請管理者確認要移除日誌或補班表）",
+          "#fff8ec","#e8cf9a",C.warn));
     })(),
     // 單筆卡片（共用）
     (()=>{
@@ -1857,7 +1874,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題 + 即時時鐘 + 重新整理
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.19（2026/11/04）"),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.20（2026/11/04）"),
         e("div",{style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}},
           e("div",{style:{fontSize:13,opacity:.85,textAlign:"right",lineHeight:1.3}}, adminToday, e("br"), "現在 "+ADMIN_TIME_STR),
           e("button",{onClick:()=>setRefreshSeq(s=>s+1),title:"重新整理（重抓目前分頁資料）",style:{background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.35)",color:"white",borderRadius:9,padding:"8px 12px",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1}},"🔄"))),
