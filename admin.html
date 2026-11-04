@@ -706,6 +706,8 @@ function LogsTab({me, viewSup}){
   const [staffOpts,setStaffOpts] = useState([]);   // 在職員工（下拉用）
   const [staffFull,setStaffFull] = useState([]);   // 在職員工完整資料 [{empId,name}]（查常用內容要用empId）
   const [caseOpts,setCaseOpts] = useState([]);     // 服務中個案（下拉用）
+  const [staffQ,setStaffQ] = useState("");         // ★A4.15：照服員下拉關鍵字搜尋
+  const [caseQ,setCaseQ] = useState("");           // ★A4.15：個案下拉關鍵字搜尋
   const [phrases,setPhrases] = useState({});
   const [phrasesQty,setPhrasesQty] = useState({});
   const [phrasesSlot,setPhrasesSlot] = useState({});
@@ -1023,16 +1025,20 @@ function LogsTab({me, viewSup}){
       e("div",{style:{display:"flex",flexWrap:"wrap",gap:12}},
         e("div",{style:{flex:"1 1 100px"}},
           e("div",{style:{fontSize:18,color:C.textSub,marginBottom:6,textAlign:"center"}},"照服員"),
+          e("input",{value:staffQ,onChange:ev=>setStaffQ(ev.target.value),placeholder:"🔍 搜尋姓名",
+            style:{width:"100%",border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",fontSize:16,fontFamily:"inherit",boxSizing:"border-box",outline:"none",marginBottom:6}}),
           e("select",{value:fWorker,onChange:ev=>setFWorker(ev.target.value),
             style:{width:"100%",border:`1.5px solid ${C.border}`,borderRadius:9,padding:"14px 12px",fontSize:22,fontFamily:"inherit",boxSizing:"border-box",outline:"none",background:"white",textAlign:"center"}},
             e("option",{value:""},"全部"),
-            staffOpts.map((n,i)=>e("option",{key:i,value:n},n)))),
+            staffOpts.filter(n=>!staffQ.trim()||n.toLowerCase().includes(staffQ.trim().toLowerCase())||n===fWorker).map((n,i)=>e("option",{key:i,value:n},n)))),
         e("div",{style:{flex:"1 1 100px"}},
           e("div",{style:{fontSize:18,color:C.textSub,marginBottom:6,textAlign:"center"}},"個案"),
+          e("input",{value:caseQ,onChange:ev=>setCaseQ(ev.target.value),placeholder:"🔍 搜尋姓名",
+            style:{width:"100%",border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",fontSize:16,fontFamily:"inherit",boxSizing:"border-box",outline:"none",marginBottom:6}}),
           e("select",{value:fClient,onChange:ev=>setFClient(ev.target.value),
             style:{width:"100%",border:`1.5px solid ${C.border}`,borderRadius:9,padding:"14px 12px",fontSize:22,fontFamily:"inherit",boxSizing:"border-box",outline:"none",background:"white",textAlign:"center"}},
             e("option",{value:""},"全部"),
-            caseOpts.map((n,i)=>e("option",{key:i,value:n},n))))),
+            caseOpts.filter(n=>!caseQ.trim()||n.toLowerCase().includes(caseQ.trim().toLowerCase())||n===fClient).map((n,i)=>e("option",{key:i,value:n},n))))),
       e("div",{style:{marginTop:12}},
         e("button",{onClick:load,disabled:loading,style:{width:"100%",background:loading?C.ok:C.primary,color:"white",border:"none",borderRadius:10,padding:"12px",fontSize:18,fontWeight:700,cursor:loading?"default":"pointer",fontFamily:"inherit"}},loading?"查詢中…":"🔍 查詢"))),
 
@@ -1815,7 +1821,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題 + 即時時鐘 + 重新整理
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.14（2026/11/03）"),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.15（2026/11/04）"),
         e("div",{style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}},
           e("div",{style:{fontSize:13,opacity:.85,textAlign:"right",lineHeight:1.3}}, adminToday, e("br"), "現在 "+ADMIN_TIME_STR),
           e("button",{onClick:()=>setRefreshSeq(s=>s+1),title:"重新整理（重抓目前分頁資料）",style:{background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.35)",color:"white",borderRadius:9,padding:"8px 12px",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1}},"🔄"))),
