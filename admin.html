@@ -388,7 +388,7 @@ const ALL_CODES = [
   {code:"BA08",name:"足部照護"},{code:"BA10",name:"翻身拍背"},
   {code:"BA11",name:"肢體關節活動"},{code:"BA12",name:"協助上下樓梯"},
   {code:"BA13",name:"陪同外出"},{code:"BA14",name:"陪同就醫"},
-  {code:"BA15",name:"家務協助"},{code:"BA16",name:"代購或代領"},
+  {code:"BA15",name:"家務協助"},{code:"BA16",name:"代購或代領"},{code:"BA17",name:"餐食製備"},
   {code:"BA18",name:"安全看視"},{code:"BA20",name:"陪伴服務"},
   {code:"BA22",name:"巡視服務"},{code:"BA23",name:"協助洗頭"},
   {code:"BA24",name:"協助排泄"},{code:"GA09",name:"居家喘息服務"}
@@ -1821,7 +1821,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題 + 即時時鐘 + 重新整理
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.15（2026/11/04）"),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.16（2026/11/04）"),
         e("div",{style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}},
           e("div",{style:{fontSize:13,opacity:.85,textAlign:"right",lineHeight:1.3}}, adminToday, e("br"), "現在 "+ADMIN_TIME_STR),
           e("button",{onClick:()=>setRefreshSeq(s=>s+1),title:"重新整理（重抓目前分頁資料）",style:{background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.35)",color:"white",borderRadius:9,padding:"8px 12px",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1}},"🔄"))),
