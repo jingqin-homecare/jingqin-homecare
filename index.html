@@ -499,7 +499,7 @@ const _nowMonthNum = _now.getMonth()+1;
 const MONTH_OPTS = [2,1,0].map(back=>{ let m=_nowMonthNum-back; while(m<1) m+=12; while(m>12) m-=12; return m; });
 const cleanName = n => String(n==null?"":n).replace(/\(.*?\)/g,"");
 // ★S1.1：顯示用——把子碼字母前加連字號(BA17d→BA17-d)，純顯示、不影響儲存碼。
-const dispCode = c => String(c||"").replace(/^([A-Za-z]+\d+)([a-z])$/,"$1-$2");
+const dispCode = c => String(c||"").replace(/^([A-Za-z]+\d+)([a-eA-E])$/,(x,a,b)=>a+"-"+b.toLowerCase());
 
 const ALL_CODES = [
   {code:"BA01",name:"基本身體清潔"},{code:"BA02",name:"基本日常照顧"},
@@ -1023,8 +1023,11 @@ function App() {
       {const pt=parseTubeStr(sv.tube);setTube(pt.tube);setTubeItems(pt.items);setTubeOtherOn(pt.otherOn);setTubeOther(pt.otherText);}
       const init={},fl={};
       s.codes.forEach(c=>{
-        if(sv.codeValues[c.code]!==undefined&&sv.codeValues[c.code]!==""){
-          init[c.code]=sv.codeValues[c.code];   // 當初真的填過、且目前班表仍有的碼
+        // ★S1.2：codeValues 的 key 是大寫(BA17D)，班次碼可能是小寫子碼(BA17d)，用大寫比對才抓得到已填內容
+        const _k=String(c.code).toUpperCase();
+        const _v=(sv.codeValues[c.code]!==undefined)?sv.codeValues[c.code]:sv.codeValues[_k];
+        if(_v!==undefined&&_v!==""){
+          init[c.code]=_v;   // 當初真的填過、且目前班表仍有的碼
         }
         // ★v86：不再自動帶入上次；沒填過的碼留空，由照服員自行從資料庫點選或打字
       });
@@ -1032,7 +1035,8 @@ function App() {
       //   填寫畫面永遠等於目前班表。被移除的碼若原本有內容，收集起來提示服務員（不無聲丟資料）。
       const dropped=[];
       Object.keys(sv.codeValues).forEach(code=>{
-        if(!s.codes.find(c=>c.code===code)){
+        // ★S1.2：大小寫不敏感比對，避免 BA17d/BA17D 被誤判成「已不在班表」
+        if(!s.codes.find(c=>String(c.code).toUpperCase()===String(code).toUpperCase())){
           const _cv=String(sv.codeValues[code]||"").trim();
           if(_cv) dropped.push({code:code,content:_cv});
         }
@@ -1128,7 +1132,9 @@ function App() {
   };
 
   const addExtra=c=>{
-    if(extraCodes.find(e=>e.code===c.code)||session.codes.find(s=>s.code===c.code))return;
+    // ★S1.2：去重改大小寫不敏感，避免同碼不同大小寫重複加入
+    const _cc=String(c.code).toUpperCase();
+    if(extraCodes.find(e=>String(e.code).toUpperCase()===_cc)||session.codes.find(s=>String(s.code).toUpperCase()===_cc))return;
     setExtraCodes(p=>[...p,c]); setShowAddPanel(false);
   };
   const removeExtra=code=>{
@@ -1168,7 +1174,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.1（2026/11/04）")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.2（2026/11/04）")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
