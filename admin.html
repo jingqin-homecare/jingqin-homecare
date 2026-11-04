@@ -379,7 +379,19 @@ async function callAPI(action, params = {}) {
 const _now = new Date();
 const NOW_HOUR = _now.getHours() + _now.getMinutes() / 60;
 const NOW_STR = `${String(_now.getHours()).padStart(2,"0")}:${String(_now.getMinutes()).padStart(2,"0")}`;
-const cleanName = n => n.replace(/\(.*?\)/g,"");
+const cleanName = n => String(n==null?"":n).replace(/\(.*?\)/g,"");
+// ★A4.17：顯示用——把子碼字母前加連字號(BA17d→BA17-d)，純顯示、不影響儲存碼。
+const dispCode = c => String(c||"").replace(/^([A-Za-z]+\d+)([a-z])$/,"$1-$2");
+// ★A4.17：BA17 子項——依仁寶中文字樣判斷子碼(a~e)；判斷不出維持裸 BA17。
+function ba17Sub(zh){
+  const s=String(zh||"");
+  if(/氣道|人工氣道/.test(s)) return "a";
+  if(/口腔|口咽|鼻咽/.test(s)) return "b";
+  if(/尿管|鼻胃管|胃管|導尿/.test(s)) return "c";
+  if(/血糖|甘油球|通便/.test(s)) return "d";
+  if(/藥盒|置入藥|備藥/.test(s)) return "e";
+  return "";
+}
 
 const ALL_CODES = [
   {code:"BA01",name:"基本身體清潔"},{code:"BA02",name:"基本日常照顧"},
@@ -388,7 +400,12 @@ const ALL_CODES = [
   {code:"BA08",name:"足部照護"},{code:"BA10",name:"翻身拍背"},
   {code:"BA11",name:"肢體關節活動"},{code:"BA12",name:"協助上下樓梯"},
   {code:"BA13",name:"陪同外出"},{code:"BA14",name:"陪同就醫"},
-  {code:"BA15",name:"家務協助"},{code:"BA16",name:"代購或代領"},{code:"BA17",name:"餐食製備"},
+  {code:"BA15",name:"家務協助"},{code:"BA16",name:"代購或代領"},
+  // ★A4.17：BA17 細分為 BA17a~e(醫事照護)，移除原誤加的「BA17 餐食製備」。
+  //   官方名稱為後備；實際顯示優先用該筆仁寶字樣(nameMap)。
+  {code:"BA17",name:"醫事照護"},
+  {code:"BA17a",name:"氣道內(人工氣道)抽吸"},{code:"BA17b",name:"口腔內(口咽、鼻咽)分泌物抽吸"},
+  {code:"BA17c",name:"尿管及鼻胃管護理"},{code:"BA17d",name:"血糖機驗血糖或甘油球通便"},{code:"BA17e",name:"依指示置入藥盒"},
   {code:"BA18",name:"安全看視"},{code:"BA20",name:"陪伴服務"},
   {code:"BA22",name:"巡視服務"},{code:"BA23",name:"協助洗頭"},
   {code:"BA24",name:"協助排泄"},{code:"GA09",name:"居家喘息服務"}
@@ -413,7 +430,7 @@ const FooterBar = () => React.createElement("div",{style:{background:C.primary,p
 
 const endHourOf = t => { const m=t.match(/~(\d{2}):(\d{2})/); return m?parseInt(m[1])+parseInt(m[2])/60:24; };
 
-const Tag = ({code,name,extra,qty}) => React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:4,background:extra?C.accentLight:C.primaryLight,color:extra?C.accent:C.primary,border:extra?`1px solid ${C.accentBorder}`:"none",borderRadius:6,padding:"2px 8px",fontSize:21,fontWeight:600}},code,qty&&qty>1?`×${qty}`:"",React.createElement("span",{style:{fontWeight:400,color:C.textSub}},cleanName(name)));
+const Tag = ({code,name,extra,qty}) => React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:4,background:extra?C.accentLight:C.primaryLight,color:extra?C.accent:C.primary,border:extra?`1px solid ${C.accentBorder}`:"none",borderRadius:6,padding:"2px 8px",fontSize:21,fontWeight:600}},dispCode(code),qty&&qty>1?`×${qty}`:"",React.createElement("span",{style:{fontWeight:400,color:C.textSub}},cleanName(name)));
 
 const SkinStatus = ({value,onChange}) => {
   // ★A4.12：拿掉「異常如前次」，與服務員端一致
@@ -646,14 +663,14 @@ function AdminLogin({onLogin}){
 
 // ── 新格式編輯輔助（v3.9）──
 // BA碼名稱查表
-const CODE_NAME_MAP = {}; ALL_CODES.forEach(c=>{ CODE_NAME_MAP[c.code]=c.name; });
-function codeNameOf(code){ return CODE_NAME_MAP[code] || ""; }
+const CODE_NAME_MAP = {}; ALL_CODES.forEach(c=>{ CODE_NAME_MAP[String(c.code).toUpperCase()]=c.name; });
+function codeNameOf(code){ return CODE_NAME_MAP[String(code||"").toUpperCase()] || ""; }
 // 解析 H 欄 BA碼字串「BA02×1, BA13×1」→ [{code:"BA02",qty:1}, ...]（相容 x/×/＊/* 與無數量）
 function parseBaField(baStr){
   const out=[];
   String(baStr||"").split(/[,，、]/).forEach(seg=>{
     const s=seg.trim(); if(!s) return;
-    const m=s.match(/^([A-Za-z]{2}\d{1,2})\s*[×xX*＊]?\s*(\d+)?/);
+    const m=s.match(/^([A-Za-z]{2}\d{1,2}[a-z]?)\s*[×xX*＊]?\s*(\d+)?/);   // ★A4.17：含子碼字母(BA17d)
     if(m){ out.push({code:m[1].toUpperCase(), qty:m[2]?parseInt(m[2]):1}); }
   });
   return out;
@@ -662,6 +679,11 @@ function parseBaField(baStr){
 // summary 各碼內容用換行分段，依序對應第 N 碼；段數不足則留空
 function splitLogToCodes(log){
   const codes=parseBaField(log.baCode);
+  // ★A4.17：S欄(碼→顯示名稱JSON，BA17子項仁寶字樣)；顯示優先用它，其次 ALL_CODES 官方名稱。
+  let nMap=null;
+  if(log.nameMap){ try{ nMap=JSON.parse(log.nameMap); }catch(e){ nMap=null; } }
+  const dispNameOf=c=>{ const u=String(c||"").toUpperCase();
+    return (nMap&&(nMap[c]!==undefined?nMap[c]:(nMap[u]!==undefined?nMap[u]:null)))||codeNameOf(c)||""; };
   // ★A4.11：優先讀 P 欄分碼JSON（跟服務員介面同一份來源），每碼對到自己的內容（可含多行），不會錯位。
   //   P欄沒有(舊資料/補登) → 退回原本「用換行依序切」的相容行為。
   let pMap=null;
@@ -670,11 +692,11 @@ function splitLogToCodes(log){
     return codes.map(c=>{
       const u=String(c.code).toUpperCase();
       const v=(pMap[c.code]!==undefined)?pMap[c.code]:(pMap[u]!==undefined?pMap[u]:"");
-      return {code:c.code, qty:c.qty||1, summary:String(v==null?"":v).trim()};
+      return {code:c.code, qty:c.qty||1, summary:String(v==null?"":v).trim(), name:dispNameOf(c.code)};
     });
   }
   const segs=String(log.summary||"").split(/\n/);
-  return codes.map((c,i)=>({code:c.code, qty:c.qty||1, summary:(segs[i]!==undefined?segs[i]:"").trim()}));
+  return codes.map((c,i)=>({code:c.code, qty:c.qty||1, summary:(segs[i]!==undefined?segs[i]:"").trim(), name:dispNameOf(c.code)}));
 }
 // 由編輯中的 codes 陣列組回 H 欄字串與 I 欄內容
 function joinCodesToLog(codeArr){
@@ -874,7 +896,8 @@ function LogsTab({me, viewSup}){
     const arr = editData.codes.slice(); arr[idx] = {...arr[idx], summary: val}; setEditData({...editData, codes:arr});
   }
   function setCodeCode(idx, val){
-    const arr = editData.codes.slice(); arr[idx] = {...arr[idx], code: val}; setEditData({...editData, codes:arr});
+    // ★A4.17：手動改碼時，名稱改用該碼官方名稱(清掉舊的仁寶字樣，避免殘留對不上)
+    const arr = editData.codes.slice(); arr[idx] = {...arr[idx], code: val, name: codeNameOf(val)}; setEditData({...editData, codes:arr});
   }
   function setCodeQty(idx, val){
     const arr = editData.codes.slice(); arr[idx] = {...arr[idx], qty: Math.max(1, parseInt(val)||1)}; setEditData({...editData, codes:arr});
@@ -899,9 +922,12 @@ function LogsTab({me, viewSup}){
       const iCol = codes.map(c=>c.summary||"").filter(Boolean).join("\n");
       // ★A4.11：同時送分碼JSON寫回P欄，確保編輯後I欄與P欄一致、服務員端不再錯位
       const codeMapObj={}; codes.forEach(c=>{ if((c.summary||"").trim()) codeMapObj[String(c.code).toUpperCase()]=c.summary; });
+      // ★A4.17：同步寫回S欄(碼→顯示名稱JSON)，保留BA17子項的仁寶字樣
+      const nameMapObj={}; codes.forEach(c=>{ const nm=(c.name||codeNameOf(c.code)); if(nm) nameMapObj[String(c.code).toUpperCase()]=nm; });
       const r = await adminAPI("adminEditLogFull",{
         rowNum: log.row, time:editData.time, baCode:hCol, summary:iCol,
         codeMap: JSON.stringify(codeMapObj),
+        nameMap: JSON.stringify(nameMapObj),
         skin:editData.skin, skinNote:editData.skinNote, status:editData.status, note:editData.note,
         tube: tubeStr
       });
@@ -963,7 +989,7 @@ function LogsTab({me, viewSup}){
               e("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:c.summary?C.okLight:C.divider,borderBottom:`1px solid ${C.border}`,flexWrap:"wrap"}},
                 e("select",{value:c.code,onChange:ev=>setCodeCode(idx,ev.target.value),
                   style:{border:`1.5px solid ${C.border}`,borderRadius:7,padding:"7px 8px",fontSize:17,fontFamily:"inherit",background:"white",fontWeight:700,color:C.primary}},
-                  ALL_CODES.map(oc=>e("option",{key:oc.code,value:oc.code},oc.code+" "+oc.name))),
+                  ALL_CODES.map(oc=>e("option",{key:oc.code,value:oc.code},dispCode(oc.code)+" "+oc.name))),
                 e("span",{style:{fontSize:16,color:C.textSub}},"×"),
                 e("input",{type:"number",min:1,value:c.qty,onChange:ev=>setCodeQty(idx,ev.target.value),
                   style:{width:56,border:`1.5px solid ${C.border}`,borderRadius:7,padding:"7px 8px",fontSize:17,fontFamily:"inherit",textAlign:"center",boxSizing:"border-box"}}),
@@ -1070,7 +1096,7 @@ function LogsTab({me, viewSup}){
                 e("div",{style:{fontSize:21,fontWeight:700,color:C.text}},log.client)),
               e(AdminTag,{text:log.status,color:log.status==="已送出"?"ok":(abn?"warn":"danger")})),
             codes.length>0 && e("div",{style:{padding:"8px 14px 10px",borderTop:`1px solid ${C.divider}`,background:"#FAF6EC",display:"flex",flexWrap:"wrap",gap:6}},
-              codes.map((c,i)=>e(Tag,{key:i,code:c.code,name:codeNameOf(c.code),qty:c.qty}))),
+              codes.map((c,i)=>e(Tag,{key:i,code:c.code,name:c.name||codeNameOf(c.code),qty:c.qty}))),
             log.skinNote && e("div",{style:{padding:"0 14px 10px",fontSize:16,color:C.warn}},"⚠️ "+log.skinNote),
             log.tube && e("div",{style:{padding:"0 14px 10px",fontSize:16,color:C.text}},"🩺 管路留置："+log.tube));
         }));
@@ -1254,7 +1280,7 @@ function MissingTab({me, viewSup}){
                     e("span",{style:{fontSize:16,color:C.textSub}},(q.month||"")+"/"+(q.day||"")+" "+(q.time||"")),
                     e("span",{style:{fontSize:17,color:C.warn,fontWeight:600}},q.client)),
                   e("div",{style:{marginTop:8,fontSize:15,fontWeight:700,color:C.danger}},
-                    q.code+"：班表 "+q.schedQty+" 支 ／ 日誌 "+q.logQty+" 支")))));
+                    dispCode(q.code)+"：班表 "+q.schedQty+" 支 ／ 日誌 "+q.logQty+" 支")))));
         }));
     })(),
     // 單筆卡片（共用）
@@ -1267,7 +1293,7 @@ function MissingTab({me, viewSup}){
             e("div",null,
               showName && e("span",{style:{fontSize:18,fontWeight:700,color:C.text,marginRight:10}},m.empName||m.worker||m.empId),
               e("span",{style:{fontSize:16,color:C.textSub}},(m.month||"")+"/"+(m.day||"")+" "+(m.time||"")),
-              m.code && e("span",{style:{fontSize:14,color:C.warn,marginLeft:8,fontWeight:600}},"缺 "+m.code)),
+              m.code && e("span",{style:{fontSize:14,color:C.warn,marginLeft:8,fontWeight:600}},"缺 "+dispCode(m.code)+(m.name?(" "+cleanName(m.name)):""))),
             e("span",{style:{fontSize:17,color:C.warn,fontWeight:600}},m.client)),
           e("div",{style:{marginTop:10,textAlign:"right"}},
             e("button",{onClick:()=>fillOne(m),disabled:busy||filling,
@@ -1591,7 +1617,7 @@ function UploadTab({me}){
         if(!y||!m||!dd)continue;
         rows.push([y,m,dd,String(row[3]||"").trim(),String(row[4]||"").trim(),
           parseInt(row[5])||1,String(row[6]||"").trim(),String(row[7]||"").trim(),
-          String(row[8]||"").trim(),String(row[9]||"").trim()]);
+          String(row[8]||"").trim(),String(row[9]||"").trim(),""]);  // ★A4.17：第11欄碼→名JSON(轉換檔無仁寶字樣，留空)
       }
     });
     return rows;
@@ -1619,8 +1645,17 @@ function UploadTab({me}){
           const pat=/(\d{1,2}:\d{2})~(\d{1,2}:\d{2})\s+([^\n\[]+?)\s*\n?\[([^\]]+)\]\s*\n?((?:(?:BA|GA)\w+[^\n,]*×\d+[,\s]*)+)/g;
           let mt,seq=1;
           while((mt=pat.exec(cell))!==null){
-            const baItems=(mt[5].match(/((?:BA|GA)\d+)[^×]*×(\d+)/g)||[]).map(item=>{const m2=item.match(/((?:BA|GA)\d+)[^×]*×(\d+)/);return m2?m2[1]+"×"+m2[2]:item;});
-            rows.push([year,month,day,eId,eName,seq,mt[1]+"~"+mt[2],String(mt[3]).trim(),mt[4],baItems.join(", ")]);
+            // ★A4.17：BA17 依仁寶中文字樣細分子碼 BA17a~e，並保留該筆仁寶實際字樣(option b)
+            const nm11={};
+            const baItems=(mt[5].match(/((?:BA|GA)\d+)[^×]*×(\d+)/g)||[]).map(item=>{
+              const m2=item.match(/((?:BA|GA)(\d+))([^×]*)×(\d+)/);
+              if(!m2) return item;
+              let code=m2[1]; const up=code.toUpperCase(); const mid=String(m2[3]||"").trim();
+              if(up==="BA17"){ const sub=ba17Sub(mid); if(sub){ code="BA17"+sub; if(mid) nm11["BA17"+sub.toUpperCase()]=mid; } }
+              return code+"×"+m2[4];
+            });
+            rows.push([year,month,day,eId,eName,seq,mt[1]+"~"+mt[2],String(mt[3]).trim(),mt[4],baItems.join(", "),
+              Object.keys(nm11).length?JSON.stringify(nm11):""]);   // ★A4.17：第11欄碼→名JSON
             seq++;
           }
         }
@@ -1821,7 +1856,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題 + 即時時鐘 + 重新整理
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.16（2026/11/04）"),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.17（2026/11/04）"),
         e("div",{style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}},
           e("div",{style:{fontSize:13,opacity:.85,textAlign:"right",lineHeight:1.3}}, adminToday, e("br"), "現在 "+ADMIN_TIME_STR),
           e("button",{onClick:()=>setRefreshSeq(s=>s+1),title:"重新整理（重抓目前分頁資料）",style:{background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.35)",color:"white",borderRadius:9,padding:"8px 12px",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1}},"🔄"))),
