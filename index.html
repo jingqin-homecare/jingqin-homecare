@@ -752,6 +752,9 @@ function App() {
   const [missingMonth,setMissingMonth] = useState(_now.getMonth()+1); // 目前警示查的月份
   const [missingOpen,setMissingOpen] = useState(false); // 警示框是否展開
   const [missingLoading,setMissingLoading] = useState(false);
+  // ★S1.6：需重新送出(班表支數已改、日誌還是舊的)——比照未填也在本月提示框呈現
+  const [resubmitDays,setResubmitDays] = useState([]);
+  const [resubmitCount,setResubmitCount] = useState(0);
   // 數位簽章
   const [signature,setSignature] = useState("");
   const [showSignPad,setShowSignPad] = useState(false);
@@ -846,7 +849,21 @@ function App() {
       }else{
         setMissingDays([]); setMissingCount(0);
       }
-    }catch(e){ setMissingDays([]); setMissingCount(0); }
+      // ★S1.6：需重新送出——用後端 qtyMismatch(支數不符，本人範圍)算出「班」與「天」
+      //   與日誌頁一致：若該班同時有未填(漏填)，歸類為「未填」優先，不重複算進「需重送」。
+      if(r.ok && Array.isArray(r.qtyMismatch)){
+        const missShift={};
+        (r.ok&&Array.isArray(r.missing)?r.missing:[]).filter(x=>parseInt(x.month)===m)
+          .forEach(x=>{ missShift[parseInt(x.day)+"|"+(x.client||"")+"|"+(x.time||"")]=true; });
+        const inM = r.qtyMismatch.filter(x=>parseInt(x.month)===m);
+        const shiftSet={}, dSet={};
+        inM.forEach(x=>{ const k=parseInt(x.day)+"|"+(x.client||"")+"|"+(x.time||""); if(missShift[k])return; shiftSet[k]=true; dSet[parseInt(x.day)]=true; });
+        setResubmitDays(Object.keys(dSet).map(n=>parseInt(n)).sort((a,b)=>a-b));
+        setResubmitCount(Object.keys(shiftSet).length);
+      }else{
+        setResubmitDays([]); setResubmitCount(0);
+      }
+    }catch(e){ setMissingDays([]); setMissingCount(0); setResubmitDays([]); setResubmitCount(0); }
     setMissingLoading(false);
   };
 
@@ -1180,7 +1197,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.5（2026/11/04）")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.6（2026/11/04）")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
@@ -1234,24 +1251,36 @@ function App() {
         uploading?"處理中…":"開始上傳"),
 
       uploadMsg&&React.createElement("div",{style:{fontSize:16,color:uploadMsg.includes("✅")?C.ok:uploadMsg.includes("❌")?C.danger:C.textSub,fontWeight:600,lineHeight:1.5}},uploadMsg)),
-    // 未填警示框
-    React.createElement("div",{style:{margin:"0 14px 12px",background:(missingDays.length>0?"#FFF7ED":C.card),borderRadius:10,border:`1.5px solid ${missingDays.length>0?C.warn:C.border}`,overflow:"hidden"}},
+    // 未填 / 需重新送出 警示框（★S1.6：兩者都在這裡提示，不用人工通知服務員）
+    (()=>{
+      const hasAlert = missingDays.length>0 || resubmitCount>0;
+      const dayKind={};
+      missingDays.forEach(d=>{ dayKind[d]=(dayKind[d]||0)|1; });
+      resubmitDays.forEach(d=>{ dayKind[d]=(dayKind[d]||0)|2; });
+      const allDays=Object.keys(dayKind).map(n=>parseInt(n)).sort((a,b)=>a-b);
+      const headTxt = missingLoading ? "查詢中…" : (
+        !hasAlert ? `✅ ${missingMonth}月已全部填寫`
+        : ("⚠️ "+missingMonth+"月"
+            +(missingDays.length>0 ? "有 "+missingDays.length+" 天、共 "+missingCount+" 筆尚未填寫" : "")
+            +(missingDays.length>0 && resubmitCount>0 ? "；" : "")
+            +(resubmitCount>0 ? "另 "+resubmitCount+" 班需重新送出(班表已更新)" : "")));
+      return React.createElement("div",{style:{margin:"0 14px 12px",background:(hasAlert?"#FFF7ED":C.card),borderRadius:10,border:`1.5px solid ${hasAlert?C.warn:C.border}`,overflow:"hidden"}},
       React.createElement("div",{onClick:()=>setMissingOpen(o=>!o),style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",cursor:"pointer"}},
-        React.createElement("div",{style:{fontSize:18,fontWeight:700,color:missingDays.length>0?C.warn:C.textSub}},
-          missingLoading?"查詢中…":(missingDays.length>0
-            ? `\u26A0\uFE0F ${missingMonth}月有 ${missingDays.length} 天、共 ${missingCount} 筆尚未填寫`
-            : `\u2705 ${missingMonth}月已全部填寫`)),
-        React.createElement("span",{style:{fontSize:18,color:C.textSub,fontWeight:700}},missingOpen?"\u2303":"\u203A")),
+        React.createElement("div",{style:{fontSize:18,fontWeight:700,color:hasAlert?C.warn:C.textSub}}, headTxt),
+        React.createElement("span",{style:{fontSize:18,color:C.textSub,fontWeight:700}},missingOpen?"⌃":"›")),
       missingOpen && React.createElement("div",{style:{padding:"0 14px 12px"}},
-        // 本月 / 上月 切換
         React.createElement("div",{style:{display:"flex",gap:8,marginBottom:10}},
           React.createElement("button",{onClick:()=>switchMissingMonth(_curMonth),style:{flex:1,background:missingMonth===_curMonth?C.accent:"white",color:missingMonth===_curMonth?"white":C.textSub,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:16,fontWeight:700,cursor:"pointer"}},"本月（"+_curMonth+"月）"),
           React.createElement("button",{onClick:()=>switchMissingMonth(_prevMonth),style:{flex:1,background:missingMonth===_prevMonth?C.accent:"white",color:missingMonth===_prevMonth?"white":C.textSub,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:16,fontWeight:700,cursor:"pointer"}},"上月（"+_prevMonth+"月）")),
-        // 未填日期清單
-        missingDays.length>0
-          ? React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
-              missingDays.map(d=>React.createElement("button",{key:d,onClick:()=>goToMissingDay(d),style:{background:"white",border:`1px solid ${C.warn}`,borderRadius:8,padding:"8px 14px",fontSize:17,fontWeight:700,color:C.warn,cursor:"pointer"}},missingMonth,"/",d," \u203A")))
-          : React.createElement("div",{style:{fontSize:16,color:C.textSub,textAlign:"center",padding:"8px"}},missingMonth+"月沒有尚未填寫的班次"))),
+        allDays.length>0
+          ? React.createElement("div",null,
+              React.createElement("div",{style:{fontSize:14,color:C.textSub,marginBottom:6}},"\u{1F534} 未填　\u{1F7E0} 需重新送出（點日期前往）"),
+              React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:8}},
+                allDays.map(d=>{ const k=dayKind[d]; const miss=(k&1)>0; const re=(k&2)>0; const col=miss?C.danger:C.warn; const tag=miss&&re?"未填+重送":(miss?"未填":"重送");
+                  return React.createElement("button",{key:d,onClick:()=>goToMissingDay(d),style:{background:"white",border:`1px solid ${col}`,borderRadius:8,padding:"8px 12px",fontSize:17,fontWeight:700,color:col,cursor:"pointer"}},missingMonth,"/",d,React.createElement("span",{style:{fontSize:13,marginLeft:4,fontWeight:600}},"("+tag+")")," ›"); })))
+          : React.createElement("div",{style:{fontSize:16,color:C.textSub,textAlign:"center",padding:"8px"}},missingMonth+"月沒有尚未填寫或需重新送出的班次")));
+    })(),
+
     // 日期選擇
     React.createElement("div",{style:{margin:"0 14px 12px",background:C.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.border}`}},
       React.createElement("div",{style:{fontSize:17,color:C.textSub,marginBottom:8}},"服務日期"),
