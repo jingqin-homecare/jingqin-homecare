@@ -849,15 +849,12 @@ function App() {
       }else{
         setMissingDays([]); setMissingCount(0);
       }
-      // ★S1.6：需重新送出——用後端 qtyMismatch(支數不符，本人範圍)算出「班」與「天」
-      //   與日誌頁一致：若該班同時有未填(漏填)，歸類為「未填」優先，不重複算進「需重送」。
-      if(r.ok && Array.isArray(r.qtyMismatch)){
-        const missShift={};
-        (r.ok&&Array.isArray(r.missing)?r.missing:[]).filter(x=>parseInt(x.month)===m)
-          .forEach(x=>{ missShift[parseInt(x.day)+"|"+(x.client||"")+"|"+(x.time||"")]=true; });
-        const inM = r.qtyMismatch.filter(x=>parseInt(x.month)===m);
+      // ★S1.7：需重新送出——改用後端 needResubmit(與 getDay 同一套單筆配對)，不再用 qtyMismatch。
+      //   這樣「重複送出」不會被誤報在服務員端(那種重送修不掉、由管理端刪)，且頂部提示與點進去的橘色標記一致。
+      if(r.ok && Array.isArray(r.needResubmit)){
+        const inM = r.needResubmit.filter(x=>parseInt(x.month)===m);
         const shiftSet={}, dSet={};
-        inM.forEach(x=>{ const k=parseInt(x.day)+"|"+(x.client||"")+"|"+(x.time||""); if(missShift[k])return; shiftSet[k]=true; dSet[parseInt(x.day)]=true; });
+        inM.forEach(x=>{ shiftSet[parseInt(x.day)+"|"+(x.client||"")+"|"+(x.time||"")]=true; dSet[parseInt(x.day)]=true; });
         setResubmitDays(Object.keys(dSet).map(n=>parseInt(n)).sort((a,b)=>a-b));
         setResubmitCount(Object.keys(shiftSet).length);
       }else{
@@ -1197,7 +1194,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.6（2026/11/04）")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.7（2026/11/04）")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
