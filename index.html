@@ -448,9 +448,12 @@ function updateQueueItem(id, update){
   const q = loadQueue().map(item => item.id===id ? {...item,...update} : item);
   saveQueue(q);
 }
-// 取得某 session 對應的佇列項目（用 empId+日期+個案比對）
-function findQueueItem(empId, serviceDate, client){
-  return loadQueue().find(i => i.payload.empId===empId && i.payload.serviceDate===serviceDate && i.payload.client===client);
+// 取得某 session 對應的佇列項目（用 empId+日期+個案+時段比對）
+// ★S1.4：加入時段，避免同一天同個案有兩班(早/晚)時，佇列狀態燈掛錯班次
+function findQueueItem(empId, serviceDate, client, time){
+  const nt=t=>String(t||"").replace(/[～〜]/g,"~").replace(/\s/g,"");
+  return loadQueue().find(i => i.payload.empId===empId && i.payload.serviceDate===serviceDate && i.payload.client===client
+    && (time===undefined || nt(i.payload.time)===nt(time)));
 }
 
 // ── 嘗試補傳佇列（背景執行） ──
@@ -500,6 +503,9 @@ const MONTH_OPTS = [2,1,0].map(back=>{ let m=_nowMonthNum-back; while(m<1) m+=12
 const cleanName = n => String(n==null?"":n).replace(/\(.*?\)/g,"");
 // ★S1.1：顯示用——把子碼字母前加連字號(BA17d→BA17-d)，純顯示、不影響儲存碼。
 const dispCode = c => String(c||"").replace(/^([A-Za-z]+\d+)([a-eA-E])$/,(x,a,b)=>a+"-"+b.toLowerCase());
+// ★S1.3：取基本碼(去掉結尾子碼字母)，BA17D/BA17d/BA17 都→BA17。用來讓舊的裸 BA17 內容
+//   也能對到新的 BA17d/e 班次(與後端向後相容一致)，避免重開已填班次被誤判未填/已移除。
+const baseC = c => String(c||"").toUpperCase().replace(/([A-Z]+\d+)[A-Z]$/,"$1");
 
 const ALL_CODES = [
   {code:"BA01",name:"基本身體清潔"},{code:"BA02",name:"基本日常照顧"},
@@ -535,7 +541,7 @@ const PillTitle = ({icon,children}) => React.createElement("div",{style:{display
 
 const FooterBar = () => React.createElement("div",{style:{background:C.primary,padding:"16px",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:10}},React.createElement(OrgLogo,{size:32,color:C.bear}),React.createElement("div",{style:{textAlign:"center"}},React.createElement("div",{style:{color:"white",fontSize:16,fontWeight:700,letterSpacing:1}},"敬親居家長照"),React.createElement("div",{style:{color:"rgba(255,255,255,.6)",fontSize:9,letterSpacing:1}},"")));
 
-const endHourOf = t => { const m=t.match(/~(\d{2}):(\d{2})/); return m?parseInt(m[1])+parseInt(m[2])/60:24; };
+const endHourOf = t => { const m=String(t||"").replace(/[～〜]/g,"~").match(/~\s*(\d{1,2}):(\d{2})/); return m?parseInt(m[1])+parseInt(m[2])/60:24; };  // ★S1.4：容許單位數結束小時(7:00)與全形～，避免早班整天鎖住無法送出
 
 const Tag = ({code,name,extra,qty}) => React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:4,background:extra?C.accentLight:C.primaryLight,color:extra?C.accent:C.primary,border:extra?`1px solid ${C.accentBorder}`:"none",borderRadius:6,padding:"2px 8px",fontSize:21,fontWeight:600}},dispCode(code),qty&&qty>1?`×${qty}`:"");
 
@@ -1022,25 +1028,25 @@ function App() {
       setSkin(sv.skin==="prev"?"new":(sv.skin||"ok")); setSkinNote(sv.skinNote||"");
       {const pt=parseTubeStr(sv.tube);setTube(pt.tube);setTubeItems(pt.items);setTubeOtherOn(pt.otherOn);setTubeOther(pt.otherText);}
       const init={},fl={};
+      // ★S1.4：把「已填內容」逐一指派給目前班次的碼，一筆內容只給一個碼，避免同底碼(BA17a/BA17c)互搶或漏掉。
+      //   只處理有內容的；先精確比對(含大小寫)，再退回基本碼比對(讓舊的裸 BA17 內容也對得到 BA17d/e)。
+      const _saved={}; Object.keys(sv.codeValues||{}).forEach(k=>{ const v=String(sv.codeValues[k]==null?"":sv.codeValues[k]).trim(); if(v!=="") _saved[k]=sv.codeValues[k]; });
+      const _used={};
+      // 第1輪：精確比對(大小寫不敏感)
       s.codes.forEach(c=>{
-        // ★S1.2：codeValues 的 key 是大寫(BA17D)，班次碼可能是小寫子碼(BA17d)，用大寫比對才抓得到已填內容
-        const _k=String(c.code).toUpperCase();
-        const _v=(sv.codeValues[c.code]!==undefined)?sv.codeValues[c.code]:sv.codeValues[_k];
-        if(_v!==undefined&&_v!==""){
-          init[c.code]=_v;   // 當初真的填過、且目前班表仍有的碼
-        }
-        // ★v86：不再自動帶入上次；沒填過的碼留空，由照服員自行從資料庫點選或打字
+        if(init[c.code]!==undefined) return;
+        const ku=String(c.code).toUpperCase();
+        for(const k in _saved){ if(_used[k])continue; if(String(k).toUpperCase()===ku){ init[c.code]=_saved[k]; _used[k]=true; break; } }
       });
-      // ★v97：自動與班表同步──日誌有、但班表已無的碼（班表事後異動）直接移除、不再顯示，
-      //   填寫畫面永遠等於目前班表。被移除的碼若原本有內容，收集起來提示服務員（不無聲丟資料）。
+      // 第2輪：基本碼比對(BA17/BA17d/BA17D 視為同類)，只補還沒配到內容的碼
+      s.codes.forEach(c=>{
+        if(init[c.code]!==undefined) return;
+        const wb=baseC(c.code);
+        for(const k in _saved){ if(_used[k])continue; if(baseC(k)===wb){ init[c.code]=_saved[k]; _used[k]=true; break; } }
+      });
+      // ★v97：日誌有內容、但沒被目前任何班次碼認領的 → 視為「班表已無此項」，收集起來提示服務員(不無聲丟資料)
       const dropped=[];
-      Object.keys(sv.codeValues).forEach(code=>{
-        // ★S1.2：大小寫不敏感比對，避免 BA17d/BA17D 被誤判成「已不在班表」
-        if(!s.codes.find(c=>String(c.code).toUpperCase()===String(code).toUpperCase())){
-          const _cv=String(sv.codeValues[code]||"").trim();
-          if(_cv) dropped.push({code:code,content:_cv});
-        }
-      });
+      Object.keys(_saved).forEach(k=>{ if(!_used[k]) dropped.push({code:k,content:String(_saved[k]).trim()}); });
       setCodeValues(init); setFromLastMap(fl); setExtraCodes([]); setDroppedCodes(dropped);
     }
     else{
@@ -1174,7 +1180,7 @@ function App() {
       React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:6}},
         React.createElement(OrgLogo,{size:34,color:C.bear}),
         React.createElement("div",{style:{fontSize:20,fontWeight:700,letterSpacing:.5,lineHeight:1.3}},"敬親服務日誌線上填寫系統")),
-      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.2（2026/11/04）")),
+      React.createElement("div",{style:{fontSize:21,opacity:.85,marginTop:6,textAlign:"center"}},today,"　現在 ",LIVE_TIME_STR),React.createElement("div",{style:{fontSize:11,opacity:.55,marginTop:4,textAlign:"center"}},"版本 S1.4（2026/11/04）")),
     // 離線佇列提示橫幅
     (()=>{
       const q=loadQueue();
@@ -1275,7 +1281,7 @@ function App() {
               React.createElement("div",{style:{fontSize:21,fontWeight:700,color:C.text}},s.client)),
             (()=>{
               // 查佇列狀態
-              const qi=done?findQueueItem(me.empId,`${_now.getFullYear()-1911}/${pickMonth}/${pickDay}`,s.client):null;
+              const qi=done?findQueueItem(me.empId,`${_now.getFullYear()-1911}/${pickMonth}/${pickDay}`,s.client,s.time):null;
               const qs=qi?qi.status:null;
               if(done){
                 if(qs==='sent'||qs===null){
