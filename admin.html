@@ -1295,7 +1295,7 @@ function MissingTab({me, viewSup}){
       };
       return e("div",{style:{marginBottom:14}},
         renderSec(qtyUnder,"qUnder",C.danger,
-          "⚠️ 日誌支數不足　共 "+_dayC(qtyUnder)+" 天、"+_shiftC(qtyUnder)+" 班、"+qtyUnder.length+" 筆（班表有、日誌少 → 需提醒服務員補填）",
+          "⚠️ 日誌支數不足　共 "+_dayC(qtyUnder)+" 天、"+_shiftC(qtyUnder)+" 班、"+qtyUnder.length+" 筆（多為班表支數改過、日誌還是舊支數 → 服務員那班重新送出，或在此改支數）",
           "#fff0f0","#f0b0b0",C.danger),
         renderSec(qtyOver,"qOver",C.warn,
           "ℹ️ 日誌多出班表沒有的項目　共 "+_dayC(qtyOver)+" 天、"+_shiftC(qtyOver)+" 班、"+qtyOver.length+" 筆（服務員填了班表沒有的碼/重複 → 請管理者確認要移除日誌或補班表）",
@@ -1874,7 +1874,7 @@ function AdminMain({me, onLogout}){
       // 第一排：Logo + 標題 + 即時時鐘 + 重新整理
       e("div",{style:{display:"flex",alignItems:"center",gap:10}},
         e(OrgLogo,{size:34,color:C.bear}),
-        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.21（2026/11/04）"),
+        e("div",{style:{fontSize:22,fontWeight:700}},"敬親管理介面　A4.22（2026/11/04）"),
         e("div",{style:{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}},
           e("div",{style:{fontSize:13,opacity:.85,textAlign:"right",lineHeight:1.3}}, adminToday, e("br"), "現在 "+ADMIN_TIME_STR),
           e("button",{onClick:()=>setRefreshSeq(s=>s+1),title:"重新整理（重抓目前分頁資料）",style:{background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.35)",color:"white",borderRadius:9,padding:"8px 12px",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1}},"🔄"))),
